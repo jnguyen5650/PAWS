@@ -43,9 +43,17 @@ def flow_warp(x,
     _, _, h, w = x.size()
     # create mesh grid
     device = flow.device
-    grid_y, grid_x = torch.meshgrid(
-        torch.arange(0, h, device=device, dtype=x.dtype),
-        torch.arange(0, w, device=device, dtype=x.dtype))
+    # torch.meshgrid has been modified in 1.10.0 (compatibility with previous
+    # versions), and will be further modified in 1.12 (Breaking Change)
+    if 'indexing' in torch.meshgrid.__code__.co_varnames:
+        grid_y, grid_x = torch.meshgrid(
+            torch.arange(0, h, device=device, dtype=x.dtype),
+            torch.arange(0, w, device=device, dtype=x.dtype),
+            indexing='ij')
+    else:
+        grid_y, grid_x = torch.meshgrid(
+            torch.arange(0, h, device=device, dtype=x.dtype),
+            torch.arange(0, w, device=device, dtype=x.dtype))
     grid = torch.stack((grid_x, grid_y), 2)  # h, w, 2
     grid.requires_grad = False
 
@@ -54,6 +62,7 @@ def flow_warp(x,
     grid_flow_x = 2.0 * grid_flow[:, :, :, 0] / max(w - 1, 1) - 1.0
     grid_flow_y = 2.0 * grid_flow[:, :, :, 1] / max(h - 1, 1) - 1.0
     grid_flow = torch.stack((grid_flow_x, grid_flow_y), dim=3)
+    grid_flow = grid_flow.type(x.type())
     output = F.grid_sample(
         x,
         grid_flow,
@@ -100,7 +109,7 @@ class PixelShufflePack(nn.Module):
         x = self.upsample_conv(x)
         x = F.pixel_shuffle(x, self.scale_factor)
         return x
- 
+
 class ResidualBlockNoBN(nn.Module):
     """Residual block without BN.
 
@@ -514,6 +523,7 @@ class SecondOrderDeformableAlignment(DeformConv2d):
             False.
         max_residue_magnitude (int): The maximum magnitude of the offset
             residue (Eq. 6 in paper). Default: 10.
+        deform_groups (int, optional): Number of deformable groups. Default: 16.
     """
 
     def __init__(self, *args, **kwargs):
@@ -532,8 +542,31 @@ class SecondOrderDeformableAlignment(DeformConv2d):
             nn.Conv2d(self.out_channels, 27 * self.deform_groups, 3, 1, 1),
         )
 
+        self.init_offset()
+    
+    def init_offset(self):
+        """
+        Initialize the final convolutional layer in `conv_offset` to produce zero offsets and mask.
+        """
+        layer = self.conv_offset[-1]
+        if hasattr(layer, "weight") and layer.weight is not None:
+            nn.init.constant_(layer.weight, 0)
+        if hasattr(layer, "bias") and layer.bias is not None:
+            nn.init.constant_(layer.bias, 0)
+
     def forward(self, x, extra_feat, flow_1, flow_2):
-        """Forward function."""
+        """
+        Compute aligned features using second-order deformable convolution.
+
+        Args:
+            x (Tensor): Input features of shape (N, C, H, W).
+            extra_feat (Tensor): Auxiliary features concatenated with flows, shape (N, C', H, W).
+            flow_1 (Tensor): First-order optical flow, shape (N, 2, H, W).
+            flow_2 (Tensor): Second-order optical flow, shape (N, 2, H, W).
+
+        Returns:
+            Tensor: Output features after deformable alignment, shape (N, out_channels, H, W).
+        """
         extra_feat = torch.cat([extra_feat, flow_1, flow_2], dim=1)
         out = self.conv_offset(extra_feat)
         o1, o2, mask = torch.chunk(out, 3, dim=1)
