@@ -1,0 +1,172 @@
+model:
+  name: "BasicVSRPlusPlus"
+  scale_factor: 4
+  mid_channels: 64
+  num_blocks: 7
+  max_residue_magnitude: 10
+  flow_model: "rapidflow"
+  flow_ckpt: "sintel"
+  cpu_cache: false
+  flow_param_keywords: ["flow_net"]
+
+training:
+  epochs: 9000
+  batch_size: 4
+  learning_rate: 1e-4
+  flow_learning_rate: 2.5e-5
+  flow_lr_multiplier: 1.0
+  fix_flow_epochs: 90
+  use_amp: true
+  use_ema: false
+  ema_decay: 0.999
+  resume_mode: "finetune"
+  resume_checkpoint_path: null
+  save_checkpoint_dir: "checkpoints"
+  save_checkpoint_freq: 50
+  final_model_dir: outputs/
+
+lr_scheduler:
+  type: cosine_decay
+  cosine:
+    T_max: 9000
+    eta_min: 1e-7
+
+dataloader:
+  train:
+    num_workers: 6
+    shuffle: true
+    persistent_workers: true
+    pin_memory: true
+  val:
+    num_workers: 4
+    shuffle: true
+    persistent_workers: true
+    pin_memory: true
+
+dataset:
+  train:
+    lr_dir: "REDS/lr/train"
+    hr_dir: "REDS/hr/train"
+    patch_size: 64
+    num_frames: 16
+  val:
+    lr_dir: "REDS/lr/val"
+    hr_dir: "REDS/hr/val"
+    patch_size: 64
+    num_frames: 16
+
+degradation:
+  use_degradations: false
+
+  # ---------------- First-order (stage 1) spatial ------------------
+  blur_kernel_size: 21
+  kernel_list:      ['iso','aniso','generalized_iso','generalized_aniso','plateau_iso','plateau_aniso']
+  kernel_prob:      [0.45,0.25,0.12,0.03,0.12,0.03]
+  blur_sigma_range: [0.2,3.0]
+  betag_range:      [0.5,4.0]
+  betap_range:      [1.0,2.0]
+  sinc_prob:        0.1
+
+  resize_prob:      [0.2,0.7,0.1]    # up, down, keep
+  resize_range:     [0.15,1.5]
+  resize_modes:     ['area','bilinear','bicubic']
+
+  gaussian_noise_prob:   0.5
+  noise_range:           [1,30]
+  poisson_scale_range:   [0.05,1.0]
+  gray_noise_prob:       0.4
+
+  jpeg_range:       [30,95]
+
+  # ---------------- Second-order (stage 2) spatial ----------------
+  second_blur_prob: 0.8
+
+  blur_kernel_size2: 21
+  kernel_list2:      ['iso','aniso','generalized_iso','generalized_aniso','plateau_iso','plateau_aniso']
+  kernel_prob2:      [0.45,0.25,0.12,0.03,0.12,0.03]
+  blur_sigma_range2: [0.2,1.5]
+  betag_range2:      [0.5,4.0]
+  betap_range2:      [1.0,2.0]
+  sinc_prob2:        0.1
+
+  resize_prob2:     [0.3,0.4,0.3]
+  resize_range2:    [0.3,1.2]
+  resize_modes2:    ['area','bilinear','bicubic']
+
+  gaussian_noise_prob2:  0.5
+  noise_range2:          [1,25]
+  poisson_scale_range2:  [0.05,1.5]
+  gray_noise_prob2:      0.4
+
+  jpeg_range2:      [30,95]
+  final_sinc_prob:  0.8
+
+  # ---------------- Video (AVC) codec ----------------
+  avc_crf_range:   [4,40]
+  avc_gop:         10
+  avc_passes:      2
+  avc_prob:        0.8
+
+custom_degradation:
+  use_custom_degradations: false
+  final_resize_modes: ['area', 'bilinear', 'bicubic'] # Required as the last step of the pipeline
+
+  # Ordered list of degradations, with each entry as a dict specifying type and params
+  pipeline:
+    - type: sinc
+      kernel_sizes: [7, 9, 11, 13, 15, 17, 19, 21]
+      prob: 0.5
+
+    - type: blur
+      kernel_sizes: [7, 9, 11, 13, 15, 17, 19, 21]
+      kernel_list: ['iso','aniso','generalized_iso']
+      kernel_prob: [0.45,0.35,0.2]
+      sigma_range: [0.2,3.0]
+      betag_range: [0.5, 4.0]
+      betap_range: [1.0, 2.0]
+      prob: 0.5
+
+    - type: resize
+      resize_prob: [0.2, 0.7, 0.1]  # up, down, keep
+      resize_range: [0.15, 1.5]
+      modes: ['area', 'bilinear', 'bicubic']
+
+    - type: gaussian_noise
+      prob: 0.5
+      sigma_range: [1, 30]
+      gray_noise_prob: 0.4
+
+    - type: poisson_noise
+      scale_p_range: [0.05, 1.0]
+      prob: 0.5
+
+    - type: jpeg_compress
+      quality_range: [30, 95]
+      prob: 0.5
+
+    - type: avc_compress
+      crf_range: [4, 40]
+      gop: 10
+      prob: 1.0
+
+losses:
+  charbonnier: true
+  tv: false
+  lpips: false
+  ldl: false
+
+loss_weights:
+  charbonnier: 1.0
+  tv: 1.0
+  perceptual: 1.0
+  lpips: 1.0
+  adv: 0.1
+  ldl: 1.0
+
+gan:
+  enabled: false
+  discriminator: "SpatioTemporalUNetDiscriminator"
+
+logging:
+  enabled: true
+  name: "PAWS_BasicVSRPP_PSNR_REDSx4"
