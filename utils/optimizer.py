@@ -1,3 +1,4 @@
+from utils.dist import is_main_process
 import torch.optim as optim
 
 
@@ -13,7 +14,8 @@ def build_optimizers(config, model, discriminator=None):
     
     for name, param in model.named_parameters():
         if any(term in name for term in match_terms):
-            print("FOUND FLOW PARAMS", name)
+            if is_main_process():
+                print("FOUND FLOW PARAMS", name)
             flow_params.append(param)
         else:
             main_params.append(param)

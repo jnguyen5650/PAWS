@@ -2,6 +2,7 @@ import os
 import torch
 from torch.utils.checkpoint import checkpoint
 from tqdm import tqdm
+from utils.dist import is_main_process
 
 
 class CheckpointWrapper(torch.nn.Module):
@@ -163,7 +164,8 @@ def load_checkpoint(
     scheduler_D=None,
     map_location="cpu",
 ):
-    tqdm.write(f"Loading checkpoint from {checkpoint_path} ...")
+    if is_main_process():
+        tqdm.write(f"Loading checkpoint from {checkpoint_path} ...")
     ckpt = torch.load(checkpoint_path, map_location=map_location)
     
     model.load_state_dict(ckpt["model_state_dict"])
@@ -183,7 +185,8 @@ def load_checkpoint(
             scheduler_D.load_state_dict(ckpt["scheduler_D_state_dict"])
 
     start_epoch = ckpt["epoch"] + 1
-    tqdm.write(f"Resuming training from epoch {start_epoch}")
+    if is_main_process():
+        tqdm.write(f"Resuming training from epoch {start_epoch}")
     return start_epoch
 
 
@@ -210,10 +213,12 @@ def load_checkpoint_if_exists(
                 scheduler_D=scheduler_D,
                 map_location=device
             )
-            print(f"[Resume Mode] Resumed from epoch {start_epoch}.")
+            if is_main_process():
+                print(f"[Resume Mode] Resumed from epoch {start_epoch}.")
 
         elif resume_mode == "finetune":
-            print(f"[Finetune Mode] Loading only generator weights from {resume_checkpoint_path}")
+            if is_main_process():
+                print(f"[Finetune Mode] Loading only generator weights from {resume_checkpoint_path}")
             ckpt = torch.load(resume_checkpoint_path, map_location=device)
             
             if "model_state_dict" in ckpt:
@@ -226,11 +231,14 @@ def load_checkpoint_if_exists(
                 ema_model.load_state_dict(src.state_dict())
 
             start_epoch = 0
-            print("[Finetune Mode] Generator weights loaded. Starting new training run at epoch 0.")
+            if is_main_process():
+                print("[Finetune Mode] Generator weights loaded. Starting new training run at epoch 0.")
         else:
-            print(f"Unknown resume_mode: {resume_mode}. Not loading checkpoint.")
+            if is_main_process():
+                print(f"Unknown resume_mode: {resume_mode}. Not loading checkpoint.")
     else:
-        print("No checkpoint path provided or file does not exist. Starting from scratch.")
+        if is_main_process():
+            print("No checkpoint path provided or file does not exist. Starting from scratch.")
         start_epoch = 0
 
     return start_epoch

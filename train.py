@@ -29,7 +29,7 @@ def main():
     ema_model = build_ema_model(config, model, DEVICE)
     discriminator = build_discriminator(config, DEVICE)
 
-    train_loader, val_loader, train_loader_len, _ = build_dataloaders(config)
+    train_loader, val_loader, train_loader_len, _, _, _ = build_dataloaders(config)
     
     optimizer_G, optimizer_D = build_optimizers(config, model, discriminator)
     scheduler_G, scheduler_D = build_schedulers(config, train_loader_len, optimizer_G, optimizer_D)

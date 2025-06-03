@@ -5,6 +5,7 @@ from metrics.psnr_ssim import calculate_psnr_pt, calculate_ssim_pt
 
 from losses import get_refined_artifact_map
 from utils.ema import update_ema
+from utils.dist import is_main_process, get_rank
 
 
 def compute_total_loss(
@@ -52,7 +53,10 @@ def compute_total_loss(
         total_loss += lambda_dict["perceptual"] * loss_val
         loss_details["Perceptual"] = loss_val.item()
     if config["losses"].get("lpips", False):
-        loss_val = losses["lpips"](fake_flat, real_flat)
+        fake_lpips = torch.clamp(fake_flat.float(), -1, 1)
+        real_lpips = real_flat.float()
+
+        loss_val = losses["lpips"](fake_lpips, real_lpips)
         total_loss += lambda_dict["lpips"] * loss_val
         loss_details["LPIPS"] = loss_val.item()
     if config["losses"].get("ldl", False):
@@ -84,10 +88,13 @@ def train_one_epoch(
     total_epochs = config["training"]["epochs"]
     amp_device = device.type
 
+    rank = get_rank()
+    disable_bar = (rank != 0)
+
     train_pbar = tqdm(
         enumerate(train_loader, start=1),
         desc=f"Epoch {epoch+1}/{total_epochs} [Training]",
-        total=len(train_loader), leave=True, dynamic_ncols=True, mininterval=0.1)
+        total=len(train_loader), disable=disable_bar, leave=True, dynamic_ncols=True, mininterval=0.1)
 
     for step, (lr, hr) in train_pbar:
         lr = lr.to(device)
@@ -164,10 +171,12 @@ def train_one_epoch(
         postfix = {k: f"{v:.4f}" for k, v in loss_details.items()}
         postfix["Main LR"] = f"{optimizer_G.param_groups[0]['lr']:.2e}"
         postfix["Flow LR"] = f"{optimizer_G.param_groups[1]['lr']:.2e}"
-        train_pbar.set_postfix(postfix)
+        if is_main_process():
+            train_pbar.set_postfix(postfix)
     
     avg_train_loss = train_loss / len(train_loader.dataset)
-    tqdm.write(f"Epoch {epoch+1}/{total_epochs} | Train Loss: {avg_train_loss:.4f}")
+    if is_main_process():
+        tqdm.write(f"Epoch {epoch+1}/{total_epochs} | Train Loss: {avg_train_loss:.4f}")
 
     return avg_train_loss, loss_details
 
@@ -187,9 +196,13 @@ def validate_one_epoch(
 
     total_epochs = config["training"]["epochs"]
 
+    rank = get_rank()
+    disable_bar = (rank != 0)
+
     val_pbar = tqdm(enumerate(val_loader, start=1), 
                     desc=f"Epoch {epoch+1}/{total_epochs} [Validation]", 
-                    total=len(val_loader), 
+                    total=len(val_loader),
+                    disable=disable_bar, 
                     leave=True, 
                     dynamic_ncols=True, 
                     mininterval=0.1)
@@ -210,7 +223,9 @@ def validate_one_epoch(
             if "perceptual" in losses:
                 val_loss_total += lambda_dict["perceptual"] * losses["perceptual"](fake, real)
             if config["losses"].get("lpips", False):
-                val_loss_total += lambda_dict["lpips"] * losses["lpips"](fake, real)
+                fake_lpips = torch.clamp(fake.float(), -1, 1)
+                real_lpips = real.float()
+                val_loss_total += lambda_dict["lpips"] * losses["lpips"](fake_lpips, real_lpips)
 
             val_loss += val_loss_total.item() * lr.size(0)
 
@@ -223,7 +238,7 @@ def validate_one_epoch(
             
             val_pbar.set_postfix({"Val Loss": f"{val_loss_total.item():.4f}"})
 
-            if config["logging"]["enabled"]:
+            if is_main_process() and config["logging"]["enabled"]:
                 if step == 1:
                     if use_ema:
                         ema_output = ema_model(lr)
@@ -238,6 +253,7 @@ def validate_one_epoch(
     avg_val_loss = val_loss / len(val_loader.dataset)
     avg_psnr = total_psnr / total_imgs if total_imgs > 0 else 0.0
     avg_ssim = total_ssim / total_imgs if total_imgs > 0 else 0.0
-    tqdm.write(f"Epoch {epoch+1}/{total_epochs} | Val Loss: {avg_val_loss:.4f} | PSNR: {avg_psnr:.4f} | SSIM: {avg_ssim:.4f}")
+    if is_main_process():
+        tqdm.write(f"Epoch {epoch+1}/{total_epochs} | Val Loss: {avg_val_loss:.4f} | PSNR: {avg_psnr:.4f} | SSIM: {avg_ssim:.4f}")
     
     return avg_val_loss, avg_psnr, avg_ssim, sample_fake, sample_real, sample_ema
