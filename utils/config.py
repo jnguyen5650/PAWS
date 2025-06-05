@@ -28,7 +28,7 @@ def get_lambda_dict(config):
     return {
         "pixel": config["loss_weights"].get("pixel", 1.0),
         "tv": config["loss_weights"].get("tv", 1.0),
-        "perceptual": config["loss_weights"].get("perceptual", 1.0),
+        "dists": config["loss_weights"].get("dists", 1.0),
         "lpips": config["loss_weights"].get("lpips", 1.0),
         "adv": config["loss_weights"].get("adv", 1.0),
         "ldl": config["loss_weights"].get("ldl", 1.0),

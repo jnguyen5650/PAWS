@@ -152,13 +152,14 @@ custom_degradation:
 losses:
   charbonnier: true
   tv: false
+  dists: false
   lpips: false
   ldl: false
 
 loss_weights:
   charbonnier: 1.0
   tv: 1.0
-  perceptual: 1.0
+  dists: 1.0
   lpips: 1.0
   adv: 0.1
   ldl: 1.0

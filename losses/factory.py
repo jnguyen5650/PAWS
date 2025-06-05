@@ -1,5 +1,6 @@
 from losses import CharbonnierLoss, TVLoss
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+from torchmetrics.image.dists import DeepImageStructureAndTextureSimilarity
 
 
 def build_losses(config, device):
@@ -8,6 +9,8 @@ def build_losses(config, device):
         losses["charbonnier"] = CharbonnierLoss().to(device)
     if config["losses"].get("tv", False):
         losses["tv"] = TVLoss().to(device)
+    if config["losses"].get("dists", False):
+        losses["dists"] = DeepImageStructureAndTextureSimilarity(reduction='mean').to(device)
     if config["losses"].get("lpips", False):
         losses["lpips"] = LearnedPerceptualImagePatchSimilarity(net_type='vgg', reduction='mean').to(device)
     if config["losses"].get("ldl", False):

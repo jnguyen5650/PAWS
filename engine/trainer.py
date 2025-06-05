@@ -48,10 +48,6 @@ def compute_total_loss(
         loss_val = losses["tv"](fake_flat, real_flat)
         total_loss += lambda_dict["tv"] * loss_val
         loss_details["TV"] = loss_val.item()
-    if "perceptual" in losses:
-        loss_val = losses["perceptual"](fake_flat, real_flat)
-        total_loss += lambda_dict["perceptual"] * loss_val
-        loss_details["Perceptual"] = loss_val.item()
     if config["losses"].get("lpips", False):
         fake_lpips = torch.clamp(fake_flat.float(), -1, 1)
         real_lpips = real_flat.float()
@@ -72,6 +68,38 @@ def compute_total_loss(
         loss_details["G Adv"] = loss_G_adv.item()
 
     return fake, real, total_loss, loss_details
+
+
+def compute_float32_losses(
+    fake_flat, real_flat,
+    losses, lambda_dict, config,
+    total_loss, loss_details
+):
+    """
+    Computes losses that must be evaluated in float32 outside the AMP context.
+
+    Args:
+        fake_flat, real_flat: [B * T, C, H, W] tensors (already detached from AMP)
+        losses: dict of loss functions
+        lambda_dict: dict of loss weights
+        config: experiment config
+        total_loss: current scalar loss (accumulated so far)
+        loss_details: dict of current per-loss logs
+
+    Returns:
+        total_loss (updated)
+        loss_details (updated)
+    """
+    # DISTS loss is numerically unstable with AMP; always compute in float32 outside autocast.
+    # Must be in [0,1].
+    if config["losses"].get("dists", False):
+        fake_dists = torch.clamp((fake_flat + 1.0) * 0.5, 0.0, 1.0).float()
+        real_dists = torch.clamp((real_flat + 1.0) * 0.5, 0.0, 1.0).float()
+        loss_val = losses["dists"](fake_dists, real_dists)
+        total_loss += lambda_dict["dists"] * loss_val
+        loss_details["DISTS"] = loss_val.item()
+
+    return total_loss, loss_details
 
 
 def train_one_epoch(
@@ -122,6 +150,15 @@ def train_one_epoch(
                     model, lr, hr, losses, lambda_dict, config,
                     ema_model=ema_model, gan_enabled=gan_enabled, discriminator=discriminator
                 )
+
+            fake_flat = fake.view(B * T, C, H, W)
+            real_flat = real.view(B * T, C, H, W)
+
+            total_loss, loss_details = compute_float32_losses(
+                fake_flat, real_flat, losses, lambda_dict, config,
+                total_loss, loss_details
+            )
+            
             scaler.scale(total_loss).backward()
             scaler.step(optimizer_G)
         else:
@@ -129,6 +166,15 @@ def train_one_epoch(
                 model, lr, hr, losses, lambda_dict, config,
                 ema_model=ema_model, gan_enabled=gan_enabled, discriminator=discriminator
             )
+
+            fake_flat = fake.view(B * T, C, H, W)
+            real_flat = real.view(B * T, C, H, W)
+
+            total_loss, loss_details = compute_float32_losses(
+                fake_flat, real_flat, losses, lambda_dict, config,
+                total_loss, loss_details
+            )
+
             total_loss.backward()
             optimizer_G.step()
 
@@ -220,8 +266,10 @@ def validate_one_epoch(
                 val_loss_total += lambda_dict["pixel"] * losses["charbonnier"](fake, real)
             if "tv" in losses:
                 val_loss_total += lambda_dict["tv"] * losses["tv"](fake, real)
-            if "perceptual" in losses:
-                val_loss_total += lambda_dict["perceptual"] * losses["perceptual"](fake, real)
+            if config["losses"].get("dists", False):
+                fake_dists = torch.clamp((fake + 1.0) * 0.5, 0.0, 1.0).float()
+                real_dists = torch.clamp((real + 1.0) * 0.5, 0.0, 1.0).float()
+                val_loss_total += lambda_dict["dists"] * losses["dists"](fake_dists, real_dists)
             if config["losses"].get("lpips", False):
                 fake_lpips = torch.clamp(fake.float(), -1, 1)
                 real_lpips = real.float()
