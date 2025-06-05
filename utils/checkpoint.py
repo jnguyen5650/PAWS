@@ -3,6 +3,7 @@ import torch
 from torch.utils.checkpoint import checkpoint
 from tqdm import tqdm
 from utils.dist import is_main_process
+from torch.nn.parallel import DistributedDataParallel
 
 
 class CheckpointWrapper(torch.nn.Module):
@@ -201,6 +202,7 @@ def load_checkpoint_if_exists(
 
     if resume_checkpoint_path and os.path.exists(resume_checkpoint_path):
         if resume_mode == "resume":
+            # Resume full training state (model, optimizer, schedulers, scaler, EMA, etc.)
             start_epoch = load_checkpoint(
                 checkpoint_path=resume_checkpoint_path,
                 model=model,
@@ -217,18 +219,65 @@ def load_checkpoint_if_exists(
                 print(f"[Resume Mode] Resumed from epoch {start_epoch}.")
 
         elif resume_mode == "finetune":
+            # Finetune: only load generator weights (ignore optimizer, etc.)
             if is_main_process():
                 print(f"[Finetune Mode] Loading only generator weights from {resume_checkpoint_path}")
             ckpt = torch.load(resume_checkpoint_path, map_location=device)
             
-            if "model_state_dict" in ckpt:
-                model.load_state_dict(ckpt["model_state_dict"])
-            else:
-                model.load_state_dict(ckpt)
+            # Extract state dict: either bare or under "model_state_dict"
+            raw_sd = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+
+            # Remove all leading "module." prefixes for DDP or wrappers
+            stripped_sd = {}
+            for k, v in raw_sd.items():
+                new_k = k
+                while new_k.startswith("module."):
+                    new_k = new_k[len("module."):]
+                stripped_sd[new_k] = v
             
+            # Restore the expected prefix structure for the current model:
+            # - DDP(CheckpointWrapper(model)): expects "module.module.<key>"
+            # - DDP(model):                  expects "module.<key>"
+            # - CheckpointWrapper(model):    expects "module.<key>"
+            # - model:                       expects "<key>"
+            if isinstance(model, DistributedDataParallel):
+                if isinstance(model.module, CheckpointWrapper):
+                    # Case: DDP(CheckpointWrapper(model))
+                    to_load = {
+                        f"module.module.{bare_key}": param_tensor
+                        for bare_key, param_tensor in stripped_sd.items()
+                    }
+                else:
+                    # Case: DDP(model)
+                    to_load = {
+                        f"module.{bare_key}": param_tensor
+                        for bare_key, param_tensor in stripped_sd.items()
+                    }
+                model.load_state_dict(to_load)
+
+            else:
+                if isinstance(model, CheckpointWrapper):
+                    # Case: CheckpointWrapper(model)
+                    model.module.load_state_dict(stripped_sd)
+                else:
+                    # Case: bare model
+                    model.load_state_dict(stripped_sd)
+
+            # If EMA is used, transfer generator weights to EMA model with correct prefix removal
             if use_ema:
-                src = model.module if hasattr(model, 'module') else model
-                ema_model.load_state_dict(src.state_dict())
+                if isinstance(model, DistributedDataParallel):
+                    src = model.module
+                else:
+                    src = model
+                # Remove exactly one leading "module." if present
+                raw_ema_sd = src.state_dict()
+                ema_sd = {}
+                for k, v in raw_ema_sd.items():
+                    if k.startswith("module."):
+                        ema_sd[k[len("module."):]] = v
+                    else:
+                        ema_sd[k] = v
+                ema_model.load_state_dict(ema_sd)
 
             start_epoch = 0
             if is_main_process():
