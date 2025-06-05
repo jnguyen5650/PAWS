@@ -196,3 +196,4 @@ cython_debug/
 logs/
 checkpoints/
 outputs/
+data/
