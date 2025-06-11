@@ -82,7 +82,31 @@ class VideoSRDataset(Dataset):
         impulse[0, max_size // 2, max_size // 2] = 1.0
         self.impulse_kernel = impulse
 
-        # Scan video directories
+        # Compute context margin and big_patch for all degradations
+        # Aggregate all kernel radii (built-in and custom)
+        kernels = self.available_kernel_sizes.copy()
+        if self.use_custom_degradations:
+            for step in self.custom_degradation_pipeline:
+                if step['type'] in ('blur', 'sinc'):
+                    kernels.extend(step.get('kernel_sizes', []))  # user-supplied sizes
+
+        max_kernel = max(kernels)
+
+        # Aggregate all scale factors from resizes (built-in and custom)
+        max_scale = 1.0
+        if self.use_degradations:
+            max_scale *= self.degradation_opts['resize_range'][1]
+            max_scale *= self.degradation_opts['resize_range2'][1]
+        if self.use_custom_degradations:
+            for step in self.custom_degradation_pipeline:
+                if step['type'] == 'resize':
+                    max_scale *= step.get('resize_range', [1.0, 1.0])[1]
+
+        # Margin is radius * total upsample, for full context throughout pipeline
+        self.margin   = math.ceil((max_kernel // 2) * max_scale)
+        self.big_patch = self.patch_size + 2 * self.margin
+
+        # Scan video directories for paired LR/HR frame lists
         self.video_dirs = sorted(
             d for d in os.listdir(lr_dir)
             if os.path.isdir(os.path.join(lr_dir, d))
@@ -116,74 +140,84 @@ class VideoSRDataset(Dataset):
         lr_video_path = os.path.join(self.lr_dir, video_info['video_id'])
         hr_video_path = os.path.join(self.hr_dir, video_info['video_id'])
 
-        # Temporal sampling
+        # Temporal sampling: select contiguous frame window of length num_frames
         total_frames = len(video_info['lr_frame_names'])
         if total_frames >= self.num_frames:
             start_idx = random.randint(0, total_frames - self.num_frames)
-            selected_lr_frames = video_info['lr_frame_names'][start_idx:start_idx + self.num_frames]
-            selected_hr_frames = video_info['hr_frame_names'][start_idx:start_idx + self.num_frames]
+            sel_lr = video_info['lr_frame_names'][start_idx:start_idx + self.num_frames]
+            sel_hr = video_info['hr_frame_names'][start_idx:start_idx + self.num_frames]
         else:
-            selected_lr_frames = video_info['lr_frame_names']
-            selected_hr_frames = video_info['hr_frame_names']
+            sel_lr = video_info['lr_frame_names']
+            sel_hr = video_info['hr_frame_names']
 
-        # Determine spatial crop coords from the first LR frame
-        first_lr = tv_io.read_image(
-            os.path.join(lr_video_path, selected_lr_frames[0])
-        ).float() / 255.0
-        _, height, width = first_lr.shape
-        if height < self.patch_size or width < self.patch_size:
+        # Read spatial dims of first LR frame (for cropping)
+        first_lr = tv_io.read_image(os.path.join(lr_video_path, sel_lr[0])).float() / 255.0
+        _, H_lr, W_lr = first_lr.shape
+        if H_lr < self.big_patch or W_lr < self.big_patch:
             raise ValueError(
-                f"Patch size ({self.patch_size}x{self.patch_size}) is larger than "
-                f"LR frame dimensions ({height}x{width}) "
-                f"for video '{video_info['video_id']}', frame '{selected_lr_frames[0]}'. "
-                "Check your patch_size and input frame sizes."
+                f"Need at least {self.big_patch}x{self.big_patch} context, got {H_lr}x{W_lr}"
             )
-        x = random.randint(0, width - self.patch_size)
-        y = random.randint(0, height - self.patch_size)
 
-        # Load and crop patches for all frames
-        hr_patches, lr_patches = [], []
-        for lr_name, hr_name in zip(selected_lr_frames, selected_hr_frames):
-            lr_img = tv_io.read_image(
-                os.path.join(lr_video_path, lr_name)
-            ).float() / 255.0
-            hr_img = tv_io.read_image(
-                os.path.join(hr_video_path, hr_name)
-            ).float() / 255.0
+        # Random top-left for context window
+        x0 = random.randint(0, W_lr - self.big_patch)
+        y0 = random.randint(0, H_lr - self.big_patch)
+
+        # Load and crop big_patch window for all frames
+        hr_big, lr_big = [], []
+        for lr_name, hr_name in zip(sel_lr, sel_hr):
+            lr_img = tv_io.read_image(os.path.join(lr_video_path, lr_name)).float() / 255.0
+            hr_img = tv_io.read_image(os.path.join(hr_video_path, hr_name)).float() / 255.0
 
             _, H_hr, W_hr = hr_img.shape
-            if height * self.scale_factor != H_hr or width * self.scale_factor != W_hr:
+            expected_hr_h = H_lr * self.scale_factor
+            expected_hr_w = W_lr * self.scale_factor
+            if H_hr != expected_hr_h or W_hr != expected_hr_w:
                 raise ValueError(
-                    f"HR frame dimensions ({H_hr}x{W_hr}) do not match "
-                    f"expected size ({height * self.scale_factor}x{width * self.scale_factor}) "
-                    f"for video '{video_info['video_id']}', frame '{hr_name}'. "
-                    "Check your scale_factor and input frame sizes."
+                    f"HR frame dimensions ({H_hr}x{W_hr}) do not match expected "
+                    f"({expected_hr_h}x{expected_hr_w}) for video '{video_info['video_id']}', "
+                    f"frame '{hr_name}'. Check your scale_factor and input sizes."
                 )
 
-            lr_patch = lr_img[:, y:y + self.patch_size, x:x + self.patch_size]
-            y_hr, x_hr = y * self.scale_factor, x * self.scale_factor
-            ps_hr = self.patch_size * self.scale_factor
-            hr_patch = hr_img[:, y_hr:y_hr + ps_hr, x_hr:x_hr + ps_hr]
+            # LR crop
+            lr_crop = lr_img[:, y0:y0 + self.big_patch, x0:x0 + self.big_patch]
 
-            lr_patches.append(lr_patch)
-            hr_patches.append(hr_patch)
+            # HR crop (aligned by scale_factor)
+            y0_hr = y0 * self.scale_factor
+            x0_hr = x0 * self.scale_factor
+            big_hr = self.big_patch * self.scale_factor
+            hr_crop = hr_img[:, y0_hr:y0_hr + big_hr, x0_hr:x0_hr + big_hr]
 
-        hr_clip = torch.stack(hr_patches, dim=0)
+            lr_big.append(lr_crop)
+            hr_big.append(hr_crop)
 
-        # Apply degradation pipeline or use raw LR
+        hr_big_clip = torch.stack(hr_big, dim=0)  # (T, C, big_hr, big_hr)
+
+        # Apply degradation pipeline or use direct LR crop
         if self.use_degradations:
-            lq_clip = self._run_degradation(hr_clip)
+            lq_big_clip = self._run_degradation(hr_big_clip)
         elif self.use_custom_degradations:
-            lq_clip = self._run_custom_degradation(hr_clip)
+            lq_big_clip = self._run_custom_degradation(hr_big_clip)
         else:
-            lq_clip = torch.stack(lr_patches, dim=0)
+            lq_big_clip = torch.stack(lr_big, dim=0)
 
-        # Random horizontal flip augmentation
+        # Extract central patch_size region: removes all context/margin
+        cy, cx = self.margin, self.margin
+        ps     = self.patch_size
+        # Low-quality sub-patch
+        lq_patches = lq_big_clip[:, :, cy:cy + ps, cx:cx + ps]
+        # High-quality sub-patch
+        hr_patches = hr_big_clip[:, :,
+                    cy * self.scale_factor:(cy + ps) * self.scale_factor,
+                    cx * self.scale_factor:(cx + ps) * self.scale_factor
+                    ]
+
+        # Random horizontal flip for data augmentation
         if random.random() < 0.5:
-            hr_clip = torch.flip(hr_clip, dims=[3])
-            lq_clip = torch.flip(lq_clip, dims=[3])
+            lq_patches = torch.flip(lq_patches, dims=[3])
+            hr_patches = torch.flip(hr_patches, dims=[3])
 
-        return lq_clip, hr_clip
+        return lq_patches, hr_patches
+
 
     def _run_degradation(self, hr_clip: torch.Tensor) -> torch.Tensor:
         device = hr_clip.device
@@ -233,7 +267,6 @@ class VideoSRDataset(Dataset):
 
         # ------ Stage 2: kernel sampling & blur ------  
         if random.random() < self.second_blur_prob:
-            # k2_size = random.choice(self.available_kernel_sizes)
             if random.random() < self.sinc_prob2:
                 out = self._degrade_sinc(out, self.available_kernel_sizes)
             else:
