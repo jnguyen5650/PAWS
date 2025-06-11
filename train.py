@@ -59,7 +59,7 @@ def main():
             match_terms=config.get("model", {}).get("flow_param_keywords", ["spynet"])
         )
 
-        avg_val_loss, avg_psnr, avg_ssim, sample_fake, sample_real, sample_ema = validate_one_epoch(
+        avg_val_loss, avg_psnr, avg_ssim, sample_input, sample_fake, sample_real, sample_ema = validate_one_epoch(
             model, ema_model, val_loader, losses, DEVICE, config, epoch, get_lambda_dict(config),
             use_ema=config["training"].get("use_ema", False))
         
@@ -69,7 +69,7 @@ def main():
                 avg_psnr, avg_ssim, train_loss_details, epoch
             )
             log_validation_images(
-                tensorboard_writer, sample_fake, sample_real, sample_ema, epoch
+                tensorboard_writer, sample_input, sample_fake, sample_real, sample_ema, epoch
             )
         
         maybe_save_checkpoint(

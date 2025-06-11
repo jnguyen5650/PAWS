@@ -84,7 +84,7 @@ def main():
 
         if val_sampler is not None:
             val_sampler.set_epoch(epoch)
-        avg_val_loss, avg_psnr, avg_ssim, sample_fake, sample_real, sample_ema = validate_one_epoch(
+        avg_val_loss, avg_psnr, avg_ssim, sample_input, sample_fake, sample_real, sample_ema = validate_one_epoch(
             model, ema_model, val_loader, losses, DEVICE, config, epoch, get_lambda_dict(config),
             use_ema=config["training"].get("use_ema", False))
         
@@ -125,7 +125,7 @@ def main():
                 epoch
             )
             log_validation_images(
-                tensorboard_writer, sample_fake, sample_real, sample_ema, epoch
+                tensorboard_writer, sample_input, sample_fake, sample_real, sample_ema, epoch
             )
         
         if is_main_process():

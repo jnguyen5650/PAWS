@@ -237,6 +237,7 @@ def validate_one_epoch(
     total_ssim = 0.0
     total_imgs = 0
     sample_ema = None
+    sample_input = None
     sample_fake = None
     sample_real = None
 
@@ -292,6 +293,13 @@ def validate_one_epoch(
                         ema_output = ema_model(lr)
                         sample_ema = ema_output[0]
 
+                    sample_input_lr = lr[0]
+                    sample_input = F.interpolate(
+                        sample_input_lr.float(),
+                        size=(H, W),
+                        mode="nearest"
+                    )
+
                     fake_reshaped = fake.view(B, T, C, H, W)
                     sample_fake = fake_reshaped[0]
                     
@@ -304,4 +312,4 @@ def validate_one_epoch(
     if is_main_process():
         tqdm.write(f"Epoch {epoch+1}/{total_epochs} | Val Loss: {avg_val_loss:.4f} | PSNR: {avg_psnr:.4f} | SSIM: {avg_ssim:.4f}")
     
-    return avg_val_loss, avg_psnr, avg_ssim, sample_fake, sample_real, sample_ema
+    return avg_val_loss, avg_psnr, avg_ssim, sample_input, sample_fake, sample_real, sample_ema

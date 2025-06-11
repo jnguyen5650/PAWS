@@ -47,18 +47,22 @@ def log_training_scalars(tensorboard_writer, avg_train_loss, avg_val_loss, optim
         tensorboard_writer.add_scalar("GPU/Max_VRAM_Reserved_GiB", vram_max_reserved, epoch+1)
 
 
-def log_validation_images(tensorboard_writer, fake_output, real_output, ema_output=None, epoch=None):
+def log_validation_images(tensorboard_writer, input_up, fake_output, real_output, ema_output=None, epoch=None):
     """
-    Log fake/real (and optionally EMA) images for validation to TensorBoard.
+    Log upscaled input, fake/real (and optionally EMA) images for validation to TensorBoard.
 
     Args:
         tensorboard_writer: TensorBoard SummaryWriter.
+        input_up: (T, C, H, W) -- Upscaled (nearest or bicubic) LR input, spatially matching output/target.
         fake_output: (T, C, H, W)
         real_output: (T, C, H, W)
         ema_output: (T, C, H, W), optional
         epoch: (int) Current epoch for logging.
     """
     # Create a grid with one row (all frames in one row).
+    grid_input = vutils.make_grid(input_up, nrow=input_up.shape[0], normalize=True, scale_each=True)
+    tensorboard_writer.add_image('Validation/Input_Frames', grid_input, global_step=epoch+1)
+
     grid_fake = vutils.make_grid(fake_output, nrow=fake_output.shape[0], normalize=True, scale_each=True)
     tensorboard_writer.add_image('Validation/Fake_Frames', grid_fake, global_step=epoch+1)
     
