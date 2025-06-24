@@ -33,7 +33,7 @@ lr_scheduler:
 
 dataloader:
   train:
-    num_workers: 6
+    num_workers: 8
     shuffle: true
     persistent_workers: true
     pin_memory: true
@@ -45,15 +45,18 @@ dataloader:
 
 dataset:
   train:
-    lr_dir: "REDS/lr/train"
-    hr_dir: "REDS/hr/train"
+    lr_dir: "data/REDS/lr/train"
+    hr_dir: "data/REDS/hr/train"
     patch_size: 64
-    num_frames: 16
+    num_frames: 30
   val:
-    lr_dir: "REDS/lr/val"
-    hr_dir: "REDS/hr/val"
+    lr_dir: "data/REDS/lr/val"
+    hr_dir: "data/REDS/hr/val"
     patch_size: 64
-    num_frames: 16
+    num_frames: 30
+  test:
+    lr_dir: "data/REDS/lr/test"
+    hr_dir: "data/REDS/hr/test"
 
 degradation:
   use_degradations: false

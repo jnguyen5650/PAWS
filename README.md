@@ -25,7 +25,7 @@ PAWS is a modular video super-resolution framework designed for both research an
 - ✅ Advanced dataset/dataloader (real + synthetic)
 - ✅ Custom degradation pipeline
 - ✅ Full model config registry (generator/discriminator/flow)
-- 🔲 Inference & demo scripts
+- ✅ Inference & demo scripts
 - 🔲 Model weights and sample outputs
 - 🔲 Web/desktop demo app
 - 🔲 Paper/report
@@ -33,6 +33,7 @@ PAWS is a modular video super-resolution framework designed for both research an
 
 ## ✨ Updates
 
+- **June 23, 2025:** Added inference script for test-time video super-resolution
 - **May 31, 2025:** Project repository initialized - dataset, training, modular config, and model registry
 
 
