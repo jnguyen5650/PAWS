@@ -1,9 +1,10 @@
 import av
 import numpy as np
 import io
+import warnings
 
 
-def degrade_clip_with_avc(frames: np.ndarray, crf=40, gop=10, bitrate=None):
+def degrade_clip_with_avc(frames: np.ndarray, crf=40, gop=10, preset='veryfast', tune=None, bitrate=None):
     """
     Simulates H.264 (AVC) compression artifacts on a sequence of video frames via an in-memory
     encode-decode cycle using the libx264 encoder. Frames are padded to ensure even height and width,
@@ -41,13 +42,16 @@ def degrade_clip_with_avc(frames: np.ndarray, crf=40, gop=10, bitrate=None):
     stream.width  = W_enc
     stream.height = H_enc
     stream.pix_fmt = 'yuv420p'
-    stream.options = {
+    opts = {
         'crf': str(crf),
-        'preset': 'veryfast',
-        'tune': 'zerolatency',
+        'preset': preset,
         'g': str(gop),
-        'keyint_min': str(gop // 2)
+        'keyint_min': str(gop // 2),
     }
+    if tune:
+        opts['tune'] = tune
+    stream.options = opts
+
     if bitrate:
         stream.bit_rate = bitrate
 
@@ -61,8 +65,9 @@ def degrade_clip_with_avc(frames: np.ndarray, crf=40, gop=10, bitrate=None):
 
     buffer.seek(0)
     container = av.open(buffer, mode='r')
+    vstream = next(s for s in container.streams if s.type == 'video')
     decoded = []
-    for packet in container.demux(video=0):
+    for packet in container.demux(vstream):
         for frame in packet.decode():
             decoded.append(frame.to_ndarray(format='rgb24'))
     container.close()

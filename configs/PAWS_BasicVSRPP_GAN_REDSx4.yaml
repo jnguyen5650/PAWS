@@ -10,23 +10,23 @@ model:
   flow_param_keywords: ["flow_net"]
 
 training:
-  epochs: 9000
-  batch_size: 4
-  learning_rate: 1e-4
-  flow_learning_rate: 2.5e-5
+  epochs: 1000
+  batch_size: 1
+  learning_rate: 5e-5
+  flow_learning_rate: 5e-5
   flow_lr_multiplier: 1.0
-  fix_flow_epochs: 90
+  fix_flow_epochs: 0
   use_amp: true
-  use_ema: false
+  use_ema: true
   ema_decay: 0.999
   resume_mode: "finetune"
-  resume_checkpoint_path: null
+  resume_checkpoint_path: "outputs/PAWS_BasicVSRPP_PSNR_REDSx4_G.pth"
   save_checkpoint_dir: "checkpoints"
-  save_checkpoint_freq: 50
+  save_checkpoint_freq: 5
   final_model_dir: outputs/
 
 lr_scheduler:
-  type: cosine_decay
+  type: fixed
   cosine:
     T_max: 9000
     eta_min: 1e-7
@@ -159,9 +159,9 @@ custom_degradation:
 losses:
   charbonnier: true
   tv: false
-  dists: false
+  dists: true
   lpips: false
-  ldl: false
+  ldl: true
 
 loss_weights:
   charbonnier: 1.0
@@ -172,9 +172,9 @@ loss_weights:
   ldl: 1.0
 
 gan:
-  enabled: false
+  enabled: true
   discriminator: "SpatioTemporalUNetDiscriminator"
 
 logging:
   enabled: true
-  name: "PAWS_BasicVSRPP_PSNR_REDSx4"
+  name: "PAWS_BasicVSRPP_GAN_REDSx4"

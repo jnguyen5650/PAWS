@@ -3,6 +3,7 @@ import inspect
 import random
 import math
 import numpy as np
+import warnings
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
@@ -34,6 +35,7 @@ class VideoSRDataset(Dataset):
         self.degradation_opts = real_opt or {}
 
         self.use_custom_degradations = use_custom_degradations
+        custom_opt = custom_opt or {}
         self.custom_final_resize_modes = custom_opt.get('final_resize_modes', ['area','bilinear','bicubic'])
         self.custom_degradation_pipeline = custom_opt.get('pipeline', [])
 
@@ -50,47 +52,69 @@ class VideoSRDataset(Dataset):
         if use_degradations and use_custom_degradations:
             raise ValueError("Cannot use both Real-ESRGAN and custom degradation pipelines simultaneously.")
 
+        def _valid_odd(k: int) -> int:
+            original = k
+            k = int(k)
+            if k < 7:
+                warnings.warn(
+                    f"Provided blur/sinc kernel size={original} is < 7. "
+                    f"Using 7 (minimum supported).",
+                    RuntimeWarning
+                )
+                k = 7
+            if (k & 1) == 0:  # even -> bump to next odd
+                warnings.warn(
+                    f"Provided blur/sinc kernel size={original} is even. "
+                    f"Using {k+1} (next odd).",
+                    RuntimeWarning
+                )
+                k += 1
+            return k
+
         # Real-ESRGAN pipeline configs
         cfg = self.degradation_opts
 
         # Real-ESRGAN Stage 1 configs
+        self.blur_kernel_size = _valid_odd(cfg.get('blur_kernel_size', 21))
         self.kernel_list_stage1 = cfg.get('kernel_list', [])
         self.kernel_probs_stage1 = cfg.get('kernel_prob', [])
-        self.blur_sigma_range1 = cfg.get('blur_sigma', cfg.get('blur_sigma_range', [0.6,5.0]))
+        self.blur_sigma_range1 = cfg.get('blur_sigma_range', [0.2,3.0])
         self.betag_range1 = cfg.get('betag_range', [0.5,4.0])
         self.betap_range1 = cfg.get('betap_range', [1.0,2.0])
         self.sinc_prob1 = cfg.get('sinc_prob', 0.1)
         # Real-ESRGAN Stage 2 configs
+        self.blur_kernel_size2 = _valid_odd(cfg.get('blur_kernel_size2', 21))
         self.second_blur_prob = cfg.get('second_blur_prob', 0.8)
         self.kernel_list_stage2 = cfg.get('kernel_list2', [])
         self.kernel_probs_stage2 = cfg.get('kernel_prob2', [])
-        self.blur_sigma_range2 = cfg.get('blur_sigma2', [0.2,1.5])
+        self.blur_sigma_range2 = cfg.get('blur_sigma_range2', [0.2,1.5])
         self.betag_range2 = cfg.get('betag_range2', [0.5,4.0])
         self.betap_range2 = cfg.get('betap_range2', [1.0,2.0])
         self.sinc_prob2 = cfg.get('sinc_prob2', 0.1)
-        self.final_sinc_prob = cfg.get('final_sinc_prob', 1.0)
+        self.final_sinc_prob = cfg.get('final_sinc_prob', 0.8)
         # AVC settings
-        self.avc_crf_range = cfg.get("avc_crf_range", (10, 40))
-        self.avc_gop = cfg.get("avc_gop", 10)
+        self.avc_crf_range = cfg.get("avc_crf_range", (10, 37))
+        self.avc_gop = cfg.get("avc_gop", 60)
+        self.avc_preset = cfg.get("avc_preset", 'veryfast')
+        self.avc_tune = cfg.get("avc_tune", None)
         self.avc_passes = cfg.get("avc_passes", 2)
-        self.avc_prob = cfg.get("avc_prob", 0.5)
+        self.avc_prob = cfg.get("avc_prob", 0.8)
 
         # Precompute possible kernel sizes and an impulse kernel for bypass
-        self.available_kernel_sizes = list(range(7, 22, 2))  # odd sizes 7 to 21
-        max_size = max(self.available_kernel_sizes)
+        self.available_kernel_sizes = list(range(7, self.blur_kernel_size + 1, 2))
+        self.available_kernel_sizes2 = list(range(7, self.blur_kernel_size2 + 1, 2))
+
+        # Build the global max size including custom steps
+        max_size = max(self.blur_kernel_size, self.blur_kernel_size2)
+        if self.use_custom_degradations:
+            for step in self.custom_degradation_pipeline:
+                if step.get('type') in ('blur','sinc'):
+                    for s in step.get('kernel_sizes', []):
+                        max_size = max(max_size, _valid_odd(s))
         impulse = torch.zeros((1, max_size, max_size), dtype=torch.float32)
         impulse[0, max_size // 2, max_size // 2] = 1.0
         self.impulse_kernel = impulse
-
-        # Compute context margin and big_patch for all degradations
-        # Aggregate all kernel radii (built-in and custom)
-        kernels = self.available_kernel_sizes.copy()
-        if self.use_custom_degradations:
-            for step in self.custom_degradation_pipeline:
-                if step['type'] in ('blur', 'sinc'):
-                    kernels.extend(step.get('kernel_sizes', []))  # user-supplied sizes
-
-        max_kernel = max(kernels)
+        assert (self.impulse_kernel.size(1) % 2) == 1, "Impulse kernel must be odd."
 
         # Aggregate all scale factors from resizes (built-in and custom)
         max_scale = 1.0
@@ -103,7 +127,7 @@ class VideoSRDataset(Dataset):
                     max_scale *= step.get('resize_range', [1.0, 1.0])[1]
 
         # Margin is radius * total upsample, for full context throughout pipeline
-        self.margin   = math.ceil((max_kernel // 2) * max_scale)
+        self.margin   = math.ceil((max_size // 2) * max_scale)
         self.big_patch = self.patch_size + 2 * self.margin
 
         # Scan video directories for paired LR/HR frame lists
@@ -261,20 +285,20 @@ class VideoSRDataset(Dataset):
 
         # ------ Stage 1: compression ------
         if random.random() < self.avc_prob:
-            out = self._avc_compress(out, self.avc_crf_range, self.avc_gop)
+            out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune)
         else:
             out = self._jpeg_compress(out, self.degradation_opts['jpeg_range'])
 
         # ------ Stage 2: kernel sampling & blur ------  
         if random.random() < self.second_blur_prob:
             if random.random() < self.sinc_prob2:
-                out = self._degrade_sinc(out, self.available_kernel_sizes)
+                out = self._degrade_sinc(out, self.available_kernel_sizes2)
             else:
                 out = self._degrade_blur(
                     out,
                     self.kernel_list_stage2,
                     self.kernel_probs_stage2,
-                    self.available_kernel_sizes,
+                    self.available_kernel_sizes2,
                     self.blur_sigma_range2,
                     self.betag_range2,
                     self.betap_range2,
@@ -302,9 +326,10 @@ class VideoSRDataset(Dataset):
 
         # ------ Final stage: optional sinc ------
         if random.random() < self.final_sinc_prob:
-            kf_size = random.choice(self.available_kernel_sizes)
+            kf_size = random.choice(self.available_kernel_sizes2)
             cutoff = random.uniform(math.pi/3, math.pi)
-            final_kernel = circular_lowpass_kernel(cutoff, kf_size, pad_to=21)
+            pad_to = int(self.impulse_kernel.size(1))
+            final_kernel = circular_lowpass_kernel(cutoff, kf_size, pad_to=pad_to)
             final_kernel = torch.from_numpy(final_kernel).to(device)
         else:
             final_kernel = self.impulse_kernel.to(device)
@@ -314,12 +339,12 @@ class VideoSRDataset(Dataset):
             out = F.interpolate(out, size=(H_lq, W_lq), mode=random.choice(self.degradation_opts.get('resize_modes2', ['area','bilinear','bicubic'])))
             out = filter2D(out, final_kernel).clamp(0.0, 1.0)
             if random.random() < self.avc_prob and self.avc_passes > 1:
-                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop)
+                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune)
             else:
                 out = self._jpeg_compress(out, self.degradation_opts['jpeg_range2'])
         else:
             if random.random() < self.avc_prob and self.avc_passes > 1:
-                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop)
+                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune)
             else:
                 out = self._jpeg_compress(out, self.degradation_opts['jpeg_range2'])
             out = F.interpolate(out, size=(H_lq, W_lq), mode=random.choice(self.degradation_opts.get('resize_modes2', ['area','bilinear','bicubic'])))
@@ -354,7 +379,7 @@ class VideoSRDataset(Dataset):
     def _degrade_sinc(
         self,
         clip: torch.Tensor,
-        kernel_sizes: int,
+        kernel_sizes: list[int],
     ) -> torch.Tensor:
         device = clip.device
 
@@ -456,8 +481,8 @@ class VideoSRDataset(Dataset):
         return torch.stack(compressed_frames, dim=0)
 
 
-    def _avc_compress(self, clip: torch.Tensor, crf_range, gop) -> torch.Tensor:
+    def _avc_compress(self, clip: torch.Tensor, crf_range, gop, preset, tune) -> torch.Tensor:
         arr = (clip.permute(0,2,3,1).cpu().numpy() * 255).astype(np.uint8)
         crf = random.randint(*crf_range)
-        dec = degrade_clip_with_avc(arr, crf=crf, gop=gop)
+        dec = degrade_clip_with_avc(arr, crf=crf, gop=gop, preset=preset, tune=tune)
         return torch.from_numpy(dec).permute(0,3,1,2).float() / 255.0
