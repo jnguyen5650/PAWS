@@ -56,7 +56,7 @@ def main():
             gan_enabled=config.get("gan", {}).get("enabled", False),
             lambda_dict=get_lambda_dict(config),
             fix_flow_epochs=config["training"]["fix_flow_epochs"],
-            match_terms=config.get("model", {}).get("flow_param_keywords", ["spynet"])
+            match_terms=config.get("model", {}).get("flow_param_keywords", ["flow_net"])
         )
 
         avg_val_loss, avg_psnr, avg_ssim, sample_input, sample_fake, sample_real, sample_ema = validate_one_epoch(
