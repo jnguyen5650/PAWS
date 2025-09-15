@@ -9,28 +9,30 @@ class TemporalBlock(nn.Module):
     and then a temporal self-attention. Input shape is [B, T, C, H, W].
     """
     def __init__(self, channels, kernel_size=3, num_heads=4):
-        super(TemporalBlock, self).__init__()
-        self.temporal_conv = nn.Conv1d(channels, channels, kernel_size, padding=kernel_size // 2)
+        super().__init__()
+        self.temporal_conv = spectral_norm(
+            nn.Conv1d(channels, channels, kernel_size, padding=kernel_size // 2, bias=False)
+        )
         self.attn = nn.MultiheadAttention(embed_dim=channels, num_heads=num_heads, batch_first=True)
-        self.norm = nn.LayerNorm(channels)
+        self.ln = nn.LayerNorm(channels)
 
     def forward(self, x):
         B, T, C, H, W = x.shape
 
-        x = x.permute(0, 3, 4, 2, 1).contiguous()
-        x = x.view(B * H * W, C, T)
-        
-        # Apply 1D temporal convolution over T
-        x = self.temporal_conv(x)  # [B*H*W, C, T]
-        
-        x = x.permute(0, 2, 1).contiguous()
-        x_norm = self.norm(x)
-        attn_out, _ = self.attn(x_norm, x_norm, x_norm)
-        # Residual connection
-        x = x + attn_out
+        # [B, T, C, H, W] -> [B, H, W, C, T] -> [B*H*W, C, T]
+        x = x.permute(0, 3, 4, 2, 1).contiguous().view(B * H * W, C, T)
 
-        x = x.permute(0, 2, 1).contiguous()
-        x = x.view(B, H, W, C, T)
+        x = self.temporal_conv(x)  
+
+        # Prepare for self attention: [N, T, C]
+        x = x.permute(0, 2, 1).contiguous()  # [B*H*W, T, C]
+
+        y = self.ln(x)
+        attn_out, _ = self.attn(y, y, y)
+        x = x + attn_out # residual connection
+
+        # Back to [B, T, C, H, W]
+        x = x.permute(0, 2, 1).contiguous().view(B, H, W, C, T)
         x = x.permute(0, 4, 3, 1, 2).contiguous()
         return x
 
