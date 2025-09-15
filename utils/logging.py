@@ -4,6 +4,15 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.utils as vutils
 
+
+def format_error_msg(category: str, where: str, what: str, count: int | None = None, rank: int | None = None) -> str:
+    prefix = f"[Rank {rank}] " if rank not in (None, 0) else ""
+    msg = f"{prefix}[{category}] {where}: {what}"
+    if count is not None:
+        msg += f" (count={int(count)})"
+    return msg
+
+
 def setup_tensorboard(config):
     """
     Create a unique TensorBoard log directory and return a SummaryWriter.

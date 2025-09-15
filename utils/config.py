@@ -26,7 +26,7 @@ def get_lambda_dict(config):
         dict: Dictionary mapping loss names to weights.
     """
     return {
-        "pixel": config["loss_weights"].get("pixel", 1.0),
+        "charbonnier": config["loss_weights"].get("charbonnier", 1.0),
         "tv": config["loss_weights"].get("tv", 1.0),
         "dists": config["loss_weights"].get("dists", 1.0),
         "lpips": config["loss_weights"].get("lpips", 1.0),
