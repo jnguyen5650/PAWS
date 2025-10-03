@@ -47,6 +47,10 @@ class VideoSRDataset(Dataset):
             "poisson_noise": self._degrade_poisson_noise,
             "jpeg_compress": self._jpeg_compress,
             "avc_compress": self._avc_compress,
+            'blur_randwalk': self._blur_randwalk,
+            'resize_randwalk': self._resize_randwalk,
+            'gaussian_noise_randwalk': self._gaussian_noise_randwalk,
+            'poisson_noise_randwalk': self._poisson_noise_randwalk,
         }
 
         if use_degradations and use_custom_degradations:
@@ -62,7 +66,7 @@ class VideoSRDataset(Dataset):
                     RuntimeWarning
                 )
                 k = 7
-            if (k & 1) == 0:  # even -> bump to next odd
+            if (k & 1) == 0:
                 warnings.warn(
                     f"Provided blur/sinc kernel size={original} is even. "
                     f"Using {k+1} (next odd).",
@@ -73,6 +77,8 @@ class VideoSRDataset(Dataset):
 
         # Real-ESRGAN pipeline configs
         cfg = self.degradation_opts
+
+        self.use_randwalk = cfg.get('temporal_mode', 'clip') == 'randwalk'
 
         # Real-ESRGAN Stage 1 configs
         self.blur_kernel_size = _valid_odd(cfg.get('blur_kernel_size', 21))
@@ -253,35 +259,71 @@ class VideoSRDataset(Dataset):
         if random.random() < self.sinc_prob1:
             out = self._degrade_sinc(hr_clip, self.available_kernel_sizes)
         else:
-            out = self._degrade_blur(
-                hr_clip,
-                self.kernel_list_stage1,
-                self.kernel_probs_stage1,
-                self.available_kernel_sizes,
-                self.blur_sigma_range1,
-                self.betag_range1,
-                self.betap_range1,
-                noise_range=None
-            )
+            if self.use_randwalk:
+                out = self._blur_randwalk(
+                    hr_clip,
+                    kernel_sizes=self.available_kernel_sizes,
+                    kernel_list=self.kernel_list_stage1,
+                    kernel_prob=self.kernel_probs_stage1,
+                    sigma_range=self.blur_sigma_range1,
+                    betag_range=self.betag_range1,
+                    betap_range=self.betap_range1,
+                    step=self.degradation_opts['steps'].get('blur_sigma1', 0.02),
+                    rot_step=self.degradation_opts['steps'].get('blur_rot1', 0.31416),
+                    betag_step=self.degradation_opts['steps'].get('blur_betag1', 0.05),
+                    betap_step=self.degradation_opts['steps'].get('blur_betap1', 0.10)
+                )
+            else:
+                out = self._degrade_blur(
+                    hr_clip,
+                    self.kernel_list_stage1,
+                    self.kernel_probs_stage1,
+                    self.available_kernel_sizes,
+                    self.blur_sigma_range1,
+                    self.betag_range1,
+                    self.betap_range1,
+                    noise_range=None
+                )
 
         # ------ Stage 1: resize & noise ------
-        out = self._degrade_resize(
-            out,
-            self.degradation_opts['resize_prob'],
-            self.degradation_opts['resize_range'],
-            modes=self.degradation_opts['resize_modes']
-        )
-        if random.random() < self.degradation_opts['gaussian_noise_prob']:
-            out = self._degrade_gaussian_noise(
+        if self.use_randwalk:
+            out = self._resize_randwalk(
                 out,
-                self.degradation_opts['noise_range'],
-                self.degradation_opts.get('gray_noise_prob', 0)
+                resize_range=self.degradation_opts['resize_range'],
+                modes=self.degradation_opts['resize_modes'],
+                step=self.degradation_opts['steps'].get('resize1', 0.015)
             )
+            if random.random() < self.degradation_opts['gaussian_noise_prob']:
+                out = self._gaussian_noise_randwalk(
+                    out,
+                    sigma_range=self.degradation_opts['noise_range'],
+                    gray_noise_prob=self.degradation_opts.get('gray_noise_prob', 0.4),
+                    step=self.degradation_opts['steps'].get('gauss_sigma1', 0.10)
+                )
+            else:
+                out = self._poisson_noise_randwalk(
+                    out,
+                    scale_p_range=self.degradation_opts['poisson_scale_range'],
+                    step=self.degradation_opts['steps'].get('poisson1', 0.005)
+                )
         else:
-            out = self._degrade_poisson_noise(
+            out = self._degrade_resize(
                 out,
-                self.degradation_opts['poisson_scale_range']
+                self.degradation_opts['resize_prob'],
+                self.degradation_opts['resize_range'],
+                modes=self.degradation_opts['resize_modes']
             )
+            if random.random() < self.degradation_opts['gaussian_noise_prob']:
+                out = self._degrade_gaussian_noise(
+                    out,
+                    self.degradation_opts['noise_range'],
+                    self.degradation_opts.get('gray_noise_prob', 0.4)
+                )
+            else:
+                out = self._degrade_poisson_noise(
+                    out,
+                    self.degradation_opts['poisson_scale_range']
+                )
 
         # ------ Stage 1: compression ------
         if random.random() < self.avc_prob:
@@ -294,35 +336,71 @@ class VideoSRDataset(Dataset):
             if random.random() < self.sinc_prob2:
                 out = self._degrade_sinc(out, self.available_kernel_sizes2)
             else:
-                out = self._degrade_blur(
-                    out,
-                    self.kernel_list_stage2,
-                    self.kernel_probs_stage2,
-                    self.available_kernel_sizes2,
-                    self.blur_sigma_range2,
-                    self.betag_range2,
-                    self.betap_range2,
-                    noise_range=None
-                )
+                if self.use_randwalk:
+                    out = self._blur_randwalk(
+                        out,
+                        kernel_sizes=self.available_kernel_sizes2,
+                        kernel_list=self.kernel_list_stage2,
+                        kernel_prob=self.kernel_probs_stage2,
+                        sigma_range=self.blur_sigma_range2,
+                        betag_range=self.betag_range2,
+                        betap_range=self.betap_range2,
+                        step=self.degradation_opts['steps'].get('blur_sigma2', 0.02),
+                        rot_step=self.degradation_opts['steps'].get('blur_rot2', 0.31416),
+                        betag_step=self.degradation_opts['steps'].get('blur_betag2', 0.05),
+                        betap_step=self.degradation_opts['steps'].get('blur_betap2', 0.10)
+                    )
+                else:
+                    out = self._degrade_blur(
+                        out,
+                        self.kernel_list_stage2,
+                        self.kernel_probs_stage2,
+                        self.available_kernel_sizes2,
+                        self.blur_sigma_range2,
+                        self.betag_range2,
+                        self.betap_range2,
+                        noise_range=None
+                    )
 
         # ------ Stage 2: resize & noise ------
-        out = self._degrade_resize(
-            out,
-            self.degradation_opts['resize_prob2'],
-            self.degradation_opts['resize_range2'],
-            modes=self.degradation_opts['resize_modes2']
-        )
-        if random.random() < self.degradation_opts['gaussian_noise_prob2']:
-            out = self._degrade_gaussian_noise(
+        if self.use_randwalk:
+            out = self._resize_randwalk(
                 out,
-                self.degradation_opts['noise_range2'],
-                self.degradation_opts.get('gray_noise_prob2', 0)
+                resize_range=self.degradation_opts['resize_range2'],
+                modes=self.degradation_opts['resize_modes2'],
+                step=self.degradation_opts['steps'].get('resize2', 0.03)
             )
+            if random.random() < self.degradation_opts['gaussian_noise_prob2']:
+                out = self._gaussian_noise_randwalk(
+                    out,
+                    sigma_range=self.degradation_opts['noise_range2'],
+                    gray_noise_prob=self.degradation_opts.get('gray_noise_prob2', 0),
+                    step=self.degradation_opts['steps'].get('gauss_sigma2', 0.10)
+                )
+            else:
+                out = self._poisson_noise_randwalk(
+                    out,
+                    scale_p_range=self.degradation_opts['poisson_scale_range2'],
+                    step=self.degradation_opts['steps'].get('poisson2', 0.005)
+                )
         else:
-            out = self._degrade_poisson_noise(
+            out = self._degrade_resize(
                 out,
-                self.degradation_opts['poisson_scale_range2']
+                self.degradation_opts['resize_prob2'],
+                self.degradation_opts['resize_range2'],
+                modes=self.degradation_opts['resize_modes2']
             )
+            if random.random() < self.degradation_opts['gaussian_noise_prob2']:
+                out = self._degrade_gaussian_noise(
+                    out,
+                    self.degradation_opts['noise_range2'],
+                    self.degradation_opts.get('gray_noise_prob2', 0)
+                )
+            else:
+                out = self._degrade_poisson_noise(
+                    out,
+                    self.degradation_opts['poisson_scale_range2']
+                )
 
         # ------ Final stage: optional sinc ------
         if random.random() < self.final_sinc_prob:
@@ -433,7 +511,8 @@ class VideoSRDataset(Dataset):
     ) -> torch.Tensor:
         choice = random.choices(['up','down','keep'], resize_prob)[0]
         scale_factor = {'up': random.uniform(1, resize_range[1]), 'down': random.uniform(resize_range[0], 1), 'keep':1}[choice]
-        out = F.interpolate(clip, scale_factor=scale_factor, mode=random.choice(modes))
+        mode = random.choice(modes)
+        out = F.interpolate(clip, scale_factor=scale_factor, mode=mode)
         return out
     
 
@@ -473,7 +552,7 @@ class VideoSRDataset(Dataset):
     def _jpeg_compress(self, clip: torch.Tensor, quality_range) -> torch.Tensor:
         compressed_frames = []
         for frame in clip:
-            img_u8 = (frame * 255.0).to(torch.uint8)
+            img_u8 = (frame.cpu() * 255.0).to(torch.uint8)
             q = random.randint(*quality_range)
             enc = tv_io.encode_jpeg(img_u8, quality=q)
             dec = tv_io.decode_jpeg(enc).float() / 255.0
@@ -486,3 +565,140 @@ class VideoSRDataset(Dataset):
         crf = random.randint(*crf_range)
         dec = degrade_clip_with_avc(arr, crf=crf, gop=gop, preset=preset, tune=tune)
         return torch.from_numpy(dec).permute(0,3,1,2).float() / 255.0
+
+
+    def _randwalk_seq(self, start, low, high, step, T):
+        p = float(start); out = []
+        for _ in range(T):
+            out.append(p)
+            p = max(low, min(high, p + random.uniform(-step, step)))
+        return out
+
+
+    def _resize_randwalk_helper(self, x, scale, mode):
+        C, H, W = x.shape[-3:]
+        newH = max(1, int(round(H * scale)))
+        newW = max(1, int(round(W * scale)))
+        y = F.interpolate(x, size=(newH, newW), mode=mode)
+        y = F.interpolate(y, size=(H, W),      mode=mode)
+        return y
+
+
+    def _blur_randwalk(self, clip, kernel_sizes, kernel_list, kernel_prob,
+                   sigma_range, betag_range, betap_range,
+                   step=0.02,
+                   rot_step=0.31416,
+                   betag_step=0.05,
+                   betap_step=0.10):
+        device = clip.device
+        T, C, H, W = clip.shape
+
+        k_size = random.choice(kernel_sizes)
+        pad_to = int(self.impulse_kernel.size(1))
+        pad    = (pad_to - k_size) // 2
+        family = random.choices(kernel_list, weights=kernel_prob, k=1)[0]
+
+        # start points
+        sx0, sy0 = random.uniform(*sigma_range), random.uniform(*sigma_range)
+        th0 = random.uniform(-math.pi, math.pi)
+
+        # bounded random walks
+        sx = self._randwalk_seq(sx0, sigma_range[0], sigma_range[1], step, T)
+        sy = self._randwalk_seq(sy0, sigma_range[0], sigma_range[1], step, T)
+        th = self._randwalk_seq(th0, -math.pi, math.pi, rot_step, T)
+
+        # walk betas only when relevant
+        use_betag = family in ('generalized_iso', 'generalized_aniso')
+        use_betap = family in ('plateau_iso', 'plateau_aniso')
+
+        if use_betag:
+            bg0 = random.uniform(*betag_range)
+            betag = self._randwalk_seq(bg0, betag_range[0], betag_range[1], betag_step, T)
+        else:
+            betag = [None] * T
+
+        if use_betap:
+            bp0 = random.uniform(*betap_range)
+            betap = self._randwalk_seq(bp0, betap_range[0], betap_range[1], betap_step, T)
+        else:
+            betap = [None] * T
+
+        # small sampling windows around the walked values
+        sig_delta   = max(1e-4, 0.5 * step)
+        rot_delta   = max(1e-4, 0.5 * rot_step)
+        betag_delta = max(1e-4, 0.5 * betag_step) if use_betag else 0.0
+        betap_delta = max(1e-4, 0.5 * betap_step) if use_betap else 0.0
+
+        outs = []
+        for t in range(T):
+            sxl = max(sigma_range[0], sx[t] - sig_delta)
+            sxh = min(sigma_range[1], sx[t] + sig_delta)
+            syl = max(sigma_range[0], sy[t] - sig_delta)
+            syh = min(sigma_range[1], sy[t] + sig_delta)
+            if sxh <= sxl: sxh = min(sigma_range[1], sxl + 1e-4)
+            if syh <= syl: syh = min(sigma_range[1], syl + 1e-4)
+
+            th_lo = max(-math.pi, th[t] - rot_delta)
+            th_hi = min( math.pi, th[t] + rot_delta)
+            if th_hi <= th_lo: th_hi = min(math.pi, th_lo + 1e-4)
+
+            # narrow beta bands only if used by this family
+            if use_betag:
+                bg_lo = max(betag_range[0], betag[t] - betag_delta)
+                bg_hi = min(betag_range[1], betag[t] + betag_delta)
+                if bg_hi <= bg_lo: bg_hi = min(betag_range[1], bg_lo + 1e-4)
+            else:
+                bg_lo, bg_hi = betag_range
+
+            if use_betap:
+                bp_lo = max(betap_range[0], betap[t] - betap_delta)
+                bp_hi = min(betap_range[1], betap[t] + betap_delta)
+                if bp_hi <= bp_lo: bp_hi = min(betap_range[1], bp_lo + 1e-4)
+            else:
+                bp_lo, bp_hi = betap_range
+
+            ker = random_mixed_kernels(
+                kernel_list=[family], kernel_prob=[1.0],
+                kernel_size=k_size,
+                sigma_x_range=(sxl, sxh),
+                sigma_y_range=(syl, syh),
+                rotation_range=(th_lo, th_hi),
+                betag_range=(bg_lo, bg_hi),
+                betap_range=(bp_lo, bp_hi),
+                noise_range=None
+            ).astype(np.float32)
+            ker /= ker.sum()
+            if pad > 0:
+                ker = np.pad(ker, ((pad, pad), (pad, pad)))
+            outs.append(filter2D(clip[t:t+1], torch.from_numpy(ker).to(device)))
+
+        return torch.cat(outs, dim=0).clamp_(0, 1)
+
+
+    def _resize_randwalk(self, clip, resize_range, modes, step=0.02):
+        T = clip.shape[0]
+        mode = random.choice(modes)
+        s0  = random.uniform(*resize_range)
+        s   = self._randwalk_seq(s0, resize_range[0], resize_range[1], step, T)
+        return torch.cat([self._resize_randwalk_helper(clip[t:t+1], s[t], mode) for t in range(T)], dim=0)
+
+
+    def _gaussian_noise_randwalk(self, clip, sigma_range, gray_noise_prob=0.0, step=0.10):
+        T = clip.shape[0]
+        s0 = random.uniform(*sigma_range)
+        s  = self._randwalk_seq(s0, sigma_range[0], sigma_range[1], step, T)
+        outs = []
+        for t in range(T):
+            gray = (random.random() < gray_noise_prob)
+            outs.append(self._degrade_gaussian_noise(clip[t:t+1],
+                                                    sigma_range=(s[t], s[t]),
+                                                    gray_noise_prob=1.0 if gray else 0.0))
+        return torch.cat(outs, dim=0)
+
+
+    def _poisson_noise_randwalk(self, clip, scale_p_range, step=0.005):
+        T = clip.shape[0]
+        s0 = random.uniform(*scale_p_range)
+        s  = self._randwalk_seq(s0, scale_p_range[0], scale_p_range[1], step, T)
+        return torch.cat([self._degrade_poisson_noise(clip[t:t+1], (s[t], s[t])) for t in range(T)], dim=0)
+    
