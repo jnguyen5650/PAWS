@@ -15,6 +15,10 @@ def build_losses(config, device):
         losses["lpips"] = LearnedPerceptualImagePatchSimilarity(net_type='vgg', reduction='mean').to(device)
     if config["losses"].get("ldl", False):
         losses["ldl"] = CharbonnierLoss().to(device)
+    if config["losses"].get("cleaning_charbonnier", False):
+        losses["cleaning_charbonnier"] = CharbonnierLoss().to(device)
+    if config["losses"].get("cleaning_dists", False):
+        losses["cleaning_dists"] = DeepImageStructureAndTextureSimilarity(reduction='mean').to(device)
     
     assert not config["losses"].get("ldl", False) or config["training"].get("use_ema", False), \
         "When using LDL (ldl: true), you must also enable EMA (use_ema: true)"

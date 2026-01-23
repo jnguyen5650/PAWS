@@ -1,7 +1,89 @@
 from .video_sr_dataset import VideoSRDataset
 from utils.dist import is_distributed, is_main_process
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 from torch.utils.data.distributed import DistributedSampler
+from typing import Iterator, List
+
+
+class SkipBatchSamplerOnce(Sampler[List[int]]):
+    """
+    Wrapper around an existing *batch sampler* that skips the first N batches exactly once.
+
+    This exists to support "resume mid-epoch" behavior without incurring dataset work
+    (e.g., expensive degradations / augmentation / I/O) for batches that were already
+    processed before a checkpoint was saved.
+
+    Behavior:
+        - On the *first* call to __iter__ after construction, it consumes (skips) the first
+          `skip_batches` batches from the underlying batch sampler, then yields the rest.
+        - On subsequent calls to __iter__ (future epochs), it yields the full underlying
+          batch stream with no skipping.
+
+    Important notes:
+        - This wrapper only affects which indices the DataLoader requests. It does not
+          change dataset length, shuffling logic, or distributed partitioning by itself.
+          Those remain the responsibility of the underlying sampler/batch_sampler.
+        - The "skip once" state is stored in-process via `_did_skip`. If you reconstruct
+          the DataLoader (new process run), the skip will happen again, which is what you want
+          when resuming from a checkpoint.
+
+    Args:
+        batch_sampler (Sampler[List[int]]):
+            The underlying batch sampler yielding lists of dataset indices (one list per batch).
+            In PyTorch DataLoader terms, this is typically `loader.batch_sampler`.
+        skip_batches (int):
+            Number of initial batches to discard on the first iterator only. Values <= 0
+            are treated as 0.
+
+    Typical usage:
+        wrapped = SkipBatchSamplerOnce(train_loader.batch_sampler, step_in_epoch)
+        train_loader = _clone_dataloader_with_batch_sampler(train_loader, wrapped)
+    """
+    def __init__(self, batch_sampler: Sampler[List[int]], skip_batches: int):
+        self.batch_sampler = batch_sampler
+        self.skip_batches = int(max(0, skip_batches))
+        self._did_skip = False
+
+    def __iter__(self) -> Iterator[List[int]]:
+        """
+        Yield batches of indices from the wrapped batch sampler.
+
+        On the first iteration only, consume and discard `skip_batches` batches from the
+        underlying iterator, then yield the remainder. On subsequent iterations, yield
+        all batches (no skipping).
+
+        Yields:
+            List[int]: A list of dataset indices representing a batch.
+        """
+        it = iter(self.batch_sampler)
+
+        if (not self._did_skip) and self.skip_batches > 0:
+            for _ in range(self.skip_batches):
+                try:
+                    next(it)
+                except StopIteration:
+                    self._did_skip = True
+                    return
+            self._did_skip = True
+
+        for batch in it:
+            yield batch
+
+    def __len__(self) -> int:
+        """
+        Return the number of batches this sampler will yield for *the next* iteration.
+
+        For the first iterator (before skipping has been performed), the effective length
+        is `len(base) - skip_batches` (clamped at 0). After skipping has occurred, we
+        report the full `len(base)`.
+
+        Returns:
+            int: Number of batches expected from the next iterator.
+        """
+        base = len(self.batch_sampler)
+        if (not self._did_skip) and self.skip_batches > 0:
+            return max(0, base - self.skip_batches)
+        return base
 
 
 def build_dataloaders(config):
@@ -125,3 +207,107 @@ def build_dataloaders(config):
         print("=" * 72 + "\n")
 
     return train_loader, val_loader, len(train_loader), len(val_loader), train_sampler, val_sampler
+
+
+def _clone_dataloader_with_batch_sampler(loader, batch_sampler) -> DataLoader:
+    """
+    Rebuild a DataLoader that is identical to `loader` except for the batch_sampler.
+
+    Newer PyTorch versions (and some configurations) freeze certain DataLoader attributes
+    after initialization. In those cases, attempting to assign `loader.batch_sampler = ...`
+    raises:
+        ValueError: batch_sampler attribute should not be set after DataLoader is initialized
+
+    This helper creates a new DataLoader instance that:
+        - shares the same dataset object
+        - preserves the majority of runtime settings (workers, collate_fn, pinning, etc.)
+        - replaces only the `batch_sampler` (and therefore implicitly batch_size/shuffle/sampler/drop_last)
+
+    Critical constraint:
+        When `batch_sampler` is provided, you must NOT also pass:
+            - batch_size
+            - shuffle
+            - sampler
+            - drop_last
+        because those are mutually exclusive with batch_sampler in DataLoader.
+
+    Args:
+        loader (DataLoader):
+            Existing DataLoader instance to clone.
+        batch_sampler:
+            The batch sampler to use in the cloned DataLoader. Must yield lists of indices.
+
+    Returns:
+        DataLoader: A new DataLoader instance configured like `loader` but with `batch_sampler`.
+    """
+    # persistent_workers is only valid if num_workers > 0
+    persistent = bool(getattr(loader, "persistent_workers", False)) and loader.num_workers > 0
+
+    # Core arguments we want to preserve.
+    # NOTE: We intentionally do NOT pass batch_size/shuffle/sampler/drop_last here.
+    kwargs = dict(
+        dataset=loader.dataset,
+        batch_sampler=batch_sampler,
+        num_workers=loader.num_workers,
+        collate_fn=loader.collate_fn,
+        pin_memory=loader.pin_memory,
+        timeout=loader.timeout,
+        worker_init_fn=loader.worker_init_fn,
+        multiprocessing_context=loader.multiprocessing_context,
+        generator=loader.generator,
+        persistent_workers=persistent,
+    )
+
+    # prefetch_factor only makes sense for multiprocessing (num_workers > 0)
+    if loader.num_workers > 0 and hasattr(loader, "prefetch_factor"):
+        pf = loader.prefetch_factor
+        if pf is not None:
+            kwargs["prefetch_factor"] = pf
+
+    if hasattr(loader, "pin_memory_device"):
+        kwargs["pin_memory_device"] = loader.pin_memory_device
+
+    if hasattr(loader, "in_order"):
+        kwargs["in_order"] = loader.in_order
+
+    return DataLoader(**kwargs)
+
+
+def apply_resume_skip_to_train_loader(train_loader, step_in_epoch) -> DataLoader:
+    """
+    Wrap a train DataLoader so it skips the first `step_in_epoch` batches exactly once.
+
+    This supports resuming from a checkpoint saved mid-epoch without:
+        - re-running dataset __getitem__ (and any expensive degradations/augmentations)
+        - needing to modify the training loop to "continue" past early batches
+
+    How it works:
+        - We wrap `train_loader.batch_sampler` with SkipBatchSamplerOnce(..., step_in_epoch).
+        - On the first resumed epoch iteration, the wrapper consumes `step_in_epoch` batches
+          from the underlying batch sampler (cheap: index generation only) and yields the rest.
+        - On subsequent epochs, the wrapper yields full epochs as normal.
+
+    Call site requirements:
+        - Must be called BEFORE the first iteration over `train_loader` in the resumed run.
+        - Typically called after loading the checkpoint (to know step_in_epoch), but before
+          the first call to train_one_epoch.
+
+    Args:
+        train_loader (DataLoader):
+            The existing training DataLoader.
+        step_in_epoch (int):
+            Number of already-processed batches within the current epoch (as saved in checkpoint).
+            If <= 0, no changes are applied.
+
+    Returns:
+        DataLoader: The original loader (unchanged) or a wrapped/cloned loader that skips once.
+    """
+    step_in_epoch = int(step_in_epoch or 0)
+    if step_in_epoch <= 0:
+        return train_loader
+
+    if isinstance(train_loader.batch_sampler, SkipBatchSamplerOnce):
+        return train_loader # already wrapped
+
+    wrapped = SkipBatchSamplerOnce(train_loader.batch_sampler, step_in_epoch)
+    return _clone_dataloader_with_batch_sampler(train_loader, wrapped)

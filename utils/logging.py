@@ -56,7 +56,7 @@ def log_training_scalars(tensorboard_writer, avg_train_loss, avg_val_loss, optim
         tensorboard_writer.add_scalar("GPU/Max_VRAM_Reserved_GiB", vram_max_reserved, epoch+1)
 
 
-def log_validation_images(tensorboard_writer, input_up, fake_output, real_output, ema_output=None, epoch=None):
+def log_validation_images(tensorboard_writer, input_up, fake_output, real_output, ema_output=None, clean_output=None, epoch=None):
     """
     Log upscaled input, fake/real (and optionally EMA) images for validation to TensorBoard.
 
@@ -66,6 +66,7 @@ def log_validation_images(tensorboard_writer, input_up, fake_output, real_output
         fake_output: (T, C, H, W)
         real_output: (T, C, H, W)
         ema_output: (T, C, H, W), optional
+        clean_output: (T, C, H, W), optional -- Cleaned frames.
         epoch: (int) Current epoch for logging.
     """
     # Create a grid with one row (all frames in one row).
@@ -81,3 +82,8 @@ def log_validation_images(tensorboard_writer, input_up, fake_output, real_output
     if ema_output is not None:
         grid_ema = vutils.make_grid(ema_output, nrow=ema_output.shape[0], normalize=True, scale_each=True)
         tensorboard_writer.add_image('Validation/EMA_Frames', grid_ema, global_step=epoch+1)
+    
+    if clean_output is not None:
+        grid_clean = vutils.make_grid(clean_output, nrow=clean_output.shape[0], normalize=True, scale_each=True)
+        tensorboard_writer.add_image('Validation/Clean_Frames', grid_clean, global_step=epoch+1)
+

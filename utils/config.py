@@ -26,10 +26,12 @@ def get_lambda_dict(config):
         dict: Dictionary mapping loss names to weights.
     """
     return {
-        "charbonnier": config["loss_weights"].get("charbonnier", 1.0),
-        "tv": config["loss_weights"].get("tv", 1.0),
-        "dists": config["loss_weights"].get("dists", 1.0),
-        "lpips": config["loss_weights"].get("lpips", 1.0),
-        "adv": config["loss_weights"].get("adv", 1.0),
-        "ldl": config["loss_weights"].get("ldl", 1.0),
+        "charbonnier": float(config["loss_weights"].get("charbonnier", 1.0)),
+        "tv": float(config["loss_weights"].get("tv", 1.0)),
+        "dists": float(config["loss_weights"].get("dists", 1.0)),
+        "lpips": float(config["loss_weights"].get("lpips", 1.0)),
+        "adv": float(config["loss_weights"].get("adv", 1.0)),
+        "ldl": float(config["loss_weights"].get("ldl", 1.0)),
+        "cleaning_charbonnier": float(config["loss_weights"].get("cleaning_charbonnier", 1.0)),
+        "cleaning_dists": float(config["loss_weights"].get("cleaning_dists", 1.0))
     }

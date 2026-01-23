@@ -2,7 +2,7 @@ from utils.config import load_config, get_lambda_dict
 from utils.logging import setup_tensorboard, log_training_scalars, log_validation_images
 from models.factory import build_generator, build_ema_model, build_discriminator
 from losses.factory import build_losses
-from datasets.factory import build_dataloaders
+from datasets.factory import build_dataloaders, apply_resume_skip_to_train_loader
 from utils.optimizer import build_optimizers
 from utils.scheduler import build_schedulers
 from utils.checkpoint import load_checkpoint_if_exists, maybe_save_checkpoint, save_final_models
@@ -36,32 +36,55 @@ def main():
     
     scaler = torch.amp.GradScaler(AMP_DEVICE)
     
-    start_epoch = load_checkpoint_if_exists(
+    start_epoch, global_step, step_in_epoch = load_checkpoint_if_exists(
         config, model, optimizer_G, scheduler_G, scaler, ema_model, discriminator, optimizer_D, scheduler_D, DEVICE
     )
     end_epoch = config["training"]["epochs"]
 
+    # If checkpoint is at/after the end of the epoch, start next epoch instead
+    if step_in_epoch >= train_loader_len:
+        start_epoch += 1
+        step_in_epoch = 0
+
+    train_loader = apply_resume_skip_to_train_loader(train_loader, step_in_epoch)
+
+    print("\n" + "=" * 72)
+    print("Model Summary | Generator (G)")
+    print("=" * 72)
     summary(model, input_size=(1, 5, 3, 64, 64))
+    print()
     if config.get("gan", {}).get("enabled", False):
+        print("\n" + "=" * 72)
+        print("Model Summary | Discriminator (D)")
+        print("=" * 72)
         summary(discriminator, input_size=(1, 5, 3, 64, 64))
+        print()
 
     # Training loop
     for epoch in range(start_epoch, end_epoch):
-        avg_train_loss, train_loss_details = train_one_epoch(
-            model, ema_model, discriminator, optimizer_G, optimizer_D,
-            scheduler_G, scheduler_D, scaler,
-            train_loader, losses, DEVICE, config, epoch,
-            use_amp=config["training"]["use_amp"],
-            use_ema=config["training"].get("use_ema", False),
-            gan_enabled=config.get("gan", {}).get("enabled", False),
-            lambda_dict=get_lambda_dict(config),
-            fix_flow_epochs=config["training"]["fix_flow_epochs"],
-            match_terms=config.get("model", {}).get("flow_param_keywords", ["flow_net"])
+        avg_train_loss, train_loss_details, global_step = train_one_epoch(
+            model,
+            ema_model,
+            discriminator,
+            optimizer_G,
+            optimizer_D,
+            scheduler_G,
+            scheduler_D,
+            scaler,
+            train_loader,
+            losses,
+            DEVICE,
+            config,
+            epoch,
+            global_step,
+            step_in_epoch,
+            lambda_dict=get_lambda_dict(config)
         )
 
-        avg_val_loss, avg_psnr, avg_ssim, sample_input, sample_fake, sample_real, sample_ema = validate_one_epoch(
-            model, ema_model, val_loader, losses, DEVICE, config, epoch, get_lambda_dict(config),
-            use_ema=config["training"].get("use_ema", False))
+        step_in_epoch = 0
+
+        avg_val_loss, avg_psnr, avg_ssim, sample_input, sample_fake, sample_real, sample_ema, sample_clean = validate_one_epoch(
+            model, ema_model, val_loader, losses, DEVICE, config, epoch, get_lambda_dict(config))
         
         if tensorboard_writer:
             log_training_scalars(
@@ -69,9 +92,9 @@ def main():
                 avg_psnr, avg_ssim, train_loss_details, epoch
             )
             log_validation_images(
-                tensorboard_writer, sample_input, sample_fake, sample_real, sample_ema, epoch
+                tensorboard_writer, sample_input, sample_fake, sample_real, sample_ema, sample_clean, epoch
             )
-        
+    
         maybe_save_checkpoint(
             epoch=epoch,
             config=config,
@@ -83,9 +106,8 @@ def main():
             discriminator=discriminator,
             optimizer_D=optimizer_D,
             scheduler_D=scheduler_D,
-            use_amp=config["training"]["use_amp"],
-            use_ema=config["training"].get("use_ema", False),
-            gan_enabled=config.get("gan", {}).get("enabled", False),
+            global_step=global_step,
+            step_in_epoch=step_in_epoch
         )
     
     if tensorboard_writer:
