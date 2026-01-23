@@ -34,7 +34,7 @@ class CheckpointWrapper(torch.nn.Module):
         super(CheckpointWrapper, self).__init__()
         self.module = module
 
-    def forward(self, *inputs):
+    def forward(self, *inputs, **kwargs):
         # Ensure that at least one tensor input has requires_grad=True.
         new_inputs = []
         for inp in inputs:
@@ -42,9 +42,9 @@ class CheckpointWrapper(torch.nn.Module):
                 inp = inp.requires_grad_()
             new_inputs.append(inp)
             
-        def custom_forward(*inputs):
-            return self.module(*inputs)
-        
+        def custom_forward(*args):
+            return self.module(*args, **kwargs)
+
         return checkpoint(custom_forward, *new_inputs, use_reentrant=False)
 
 
@@ -59,10 +59,14 @@ def save_checkpoint(
     optimizer_D=None,
     scheduler_D=None,
     path="checkpoint_latest.pth",
+    global_step=None,
+    step_in_epoch=None
 ):
     """Save training state so we can resume later."""
     checkpoint = {
         "epoch": epoch,
+        "global_step": global_step,
+        "step_in_epoch": step_in_epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_G_state_dict": optimizer_G.state_dict(),
         "scheduler_G_state_dict": scheduler_G.state_dict() if scheduler_G is not None else None,
@@ -93,18 +97,21 @@ def maybe_save_checkpoint(
     discriminator=None,
     optimizer_D=None,
     scheduler_D=None,
-    use_amp=False,
-    use_ema=False,
-    gan_enabled=False,
+    global_step=None,
+    step_in_epoch=None,
 ):
+    use_amp = config["training"].get("use_amp", False)
+    use_ema = config["training"].get("use_ema", False)
+    gan_enabled = config.get("gan", {}).get("enabled", False)
     save_freq = config["training"]["save_checkpoint_freq"]
     save_dir = config["training"]["save_checkpoint_dir"]
-    
-    should_save = ((epoch + 1) % save_freq == 0)
-        
-    if should_save:
-        os.makedirs(save_dir, exist_ok=True)
-        ckpt_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch+1}.pth")
+    epoch_human_readable = epoch + 1
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Iteration based checkpoint
+    if step_in_epoch is not None and step_in_epoch > 0:
+        ckpt_path = os.path.join(save_dir, f"checkpoint_gs_{global_step}_epoch_{epoch_human_readable}_step_{step_in_epoch}.pth")
         save_checkpoint(
             epoch=epoch,
             model=model,
@@ -115,8 +122,30 @@ def maybe_save_checkpoint(
             discriminator=discriminator if gan_enabled else None,
             optimizer_D=optimizer_D if gan_enabled else None,
             scheduler_D=scheduler_D if gan_enabled else None,
-            path=ckpt_path
+            path=ckpt_path,
+            global_step=global_step,
+            step_in_epoch=step_in_epoch,
         )
+        return
+
+    # Epoch based checkpoint
+    if save_freq is not None and save_freq > 0 and ((epoch_human_readable) % save_freq == 0):
+        ckpt_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch_human_readable}_step_0.pth")
+        save_checkpoint(
+            epoch=epoch,
+            model=model,
+            optimizer_G=optimizer_G,
+            scheduler_G=scheduler_G,
+            scaler=scaler if use_amp else None,
+            ema_model=ema_model if use_ema else None,
+            discriminator=discriminator if gan_enabled else None,
+            optimizer_D=optimizer_D if gan_enabled else None,
+            scheduler_D=scheduler_D if gan_enabled else None,
+            path=ckpt_path,
+            global_step=global_step,
+            step_in_epoch=0,
+        )
+
 
 
 def save_final_models(
@@ -185,10 +214,20 @@ def load_checkpoint(
         if ckpt.get("scheduler_D_state_dict", None) is not None and scheduler_D is not None:
             scheduler_D.load_state_dict(ckpt["scheduler_D_state_dict"])
 
-    start_epoch = ckpt["epoch"] + 1
+    start_epoch = ckpt["epoch"]
+    global_step = ckpt.get("global_step", 0)
+    step_in_epoch = ckpt.get("step_in_epoch", 0)
+
+    if step_in_epoch == 0:
+        # Epoch was completed, resume at next epoch
+        start_epoch = start_epoch + 1
+    else:
+        # Epoch was in progress, resume inside this epoch
+        start_epoch = start_epoch
+
     if is_main_process():
         tqdm.write(f"Resuming training from epoch {start_epoch}")
-    return start_epoch
+    return start_epoch, global_step, step_in_epoch
 
 
 def load_checkpoint_if_exists(
@@ -199,11 +238,13 @@ def load_checkpoint_if_exists(
     resume_checkpoint_path = config["training"].get("resume_checkpoint_path", None)
     use_ema = config["training"].get("use_ema", False)
     start_epoch = 0
+    global_step = 0
+    step_in_epoch = 0
 
     if resume_checkpoint_path and os.path.exists(resume_checkpoint_path):
         if resume_mode == "resume":
             # Resume full training state (model, optimizer, schedulers, scaler, EMA, etc.)
-            start_epoch = load_checkpoint(
+            start_epoch, global_step, step_in_epoch = load_checkpoint(
                 checkpoint_path=resume_checkpoint_path,
                 model=model,
                 optimizer_G=optimizer_G,
@@ -280,6 +321,8 @@ def load_checkpoint_if_exists(
                 ema_model.load_state_dict(ema_sd)
 
             start_epoch = 0
+            global_step = 0
+            step_in_epoch = 0
             if is_main_process():
                 print("[Finetune Mode] Generator weights loaded. Starting new training run at epoch 0.")
         else:
@@ -289,5 +332,7 @@ def load_checkpoint_if_exists(
         if is_main_process():
             print("No checkpoint path provided or file does not exist. Starting from scratch.")
         start_epoch = 0
+        global_step = 0
+        step_in_epoch = 0
 
-    return start_epoch
+    return start_epoch, global_step, step_in_epoch
