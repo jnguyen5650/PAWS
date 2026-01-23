@@ -11,14 +11,13 @@ def build_optimizers(config, model, discriminator=None):
     gan_enabled = config.get("gan", {}).get("enabled", False)
     
     # Set up parameter groups: main vs flow parameters
-    flow_params, main_params = [], []
+    flow_params, flow_param_names, main_params = [], [], []
     match_terms = config.get("model", {}).get("flow_param_keywords", ["flow_net"])
     
     for name, param in model.named_parameters():
         if any(term in name for term in match_terms):
-            if is_main_process():
-                print("FOUND FLOW PARAMS", name)
             flow_params.append(param)
+            flow_param_names.append(name)
         else:
             main_params.append(param)
     
@@ -37,5 +36,44 @@ def build_optimizers(config, model, discriminator=None):
         d_betas = tuple(config["gan"].get("d_betas", g_betas))
         d_wd = float(config["gan"].get("d_weight_decay", g_wd))
         optimizer_D = optim.Adam(discriminator.parameters(), lr=d_lr, betas=d_betas, weight_decay=d_wd)
+
+    if is_main_process():
+        print("\n" + "=" * 72)
+        print(" Optimizer Configuration Summary")
+        print("=" * 72)
+
+        print(f"  Generator LR (main)        : {g_lr}")
+        print(f"  Generator LR (flow)        : {flow_lr} (x{flow_lr_mult} -> {flow_lr * flow_lr_mult})")
+        print(f"  Betas                      : {g_betas}")
+        print(f"  Weight Decay               : {g_wd}")
+        print()
+
+        print("  Parameter Groups")
+        print(f"    Main Params              : {len(main_params)} tensors")
+        print(f"    Flow Params              : {len(flow_params)} tensors")
+        print(f"    Flow Match Keywords      : {match_terms}")
+
+        if len(flow_params) == 0:
+            print("    WARNING                  : No flow parameters matched!")
+        else:
+            print("    Flow Param Examples      :")
+            for n in flow_param_names[:5]:
+                print(f"      - {n}")
+            if len(flow_param_names) > 5:
+                print(f"      ... ({len(flow_param_names) - 5} more)")
+
+        if gan_enabled and discriminator is not None:
+            print()
+            print("  Discriminator Optimizer")
+            print(f"    Enabled                  : True")
+            print(f"    LR                       : {d_lr}")
+            print(f"    Betas                    : {d_betas}")
+            print(f"    Weight Decay             : {d_wd}")
+        else:
+            print()
+            print("  Discriminator Optimizer")
+            print(f"    Enabled                  : False")
+
+        print("=" * 72 + "\n")
     
     return optimizer_G, optimizer_D
