@@ -2,6 +2,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
 
+from .registry import register_discriminator
+
 
 class TemporalBlock(nn.Module):
     """
@@ -37,6 +39,7 @@ class TemporalBlock(nn.Module):
         return x
 
 
+@register_discriminator()
 class SpatioTemporalUNetDiscriminator(nn.Module):
     """
     U-Net discriminator with multi-scale spatiotemporal (temporal attention) blocks.
