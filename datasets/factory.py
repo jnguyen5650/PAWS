@@ -88,6 +88,40 @@ def build_dataloaders(config):
         )
 
     if is_main_process():
-        print("TOTAL TRAINING ITERATIONS:", total_epochs * len(train_loader))
+        total_iters = total_epochs * len(train_loader)
+
+        print("\n" + "=" * 72)
+        print(" Training Configuration Summary")
+        print("=" * 72)
+
+        print(f"  Epochs              : {total_epochs}")
+        print(f"  Iterations / Epoch  : {len(train_loader)}")
+        print(f"  Total Iterations    : {total_iters}")
+        print()
+
+        print("  Data Geometry")
+        print(f"    Scale Factor      : x{scale_factor}")
+        print(f"    Batch Size        : {batch_size}")
+        print(f"    Patch Size        : {train_dataset_config['patch_size']}")
+        print(f"    Num Frames        : {train_dataset_config['num_frames']}")
+        print()
+
+        print("  Training Dataset")
+        print(f"    LR Dir            : {train_dataset_config['lr_dir']}")
+        print(f"    HR Dir            : {train_dataset_config['hr_dir']}")
+        print(f"    Samples           : {len(train_dataset)}")
+        print()
+
+        print("  Validation Dataset")
+        print(f"    LR Dir            : {val_dataset_config['lr_dir']}")
+        print(f"    HR Dir            : {val_dataset_config['hr_dir']}")
+        print(f"    Samples           : {len(val_dataset)}")
+        print()
+
+        print("  DataLoader")
+        print(f"    Train Workers     : {config['dataloader']['train']['num_workers']}")
+        print(f"    Val Workers       : {config['dataloader']['val']['num_workers']}")
+        print(f"    Distributed       : {is_distributed()}")
+        print("=" * 72 + "\n")
 
     return train_loader, val_loader, len(train_loader), len(val_loader), train_sampler, val_sampler
