@@ -54,6 +54,7 @@ def degrade_clip_with_avc(frames: np.ndarray, crf=40, gop=10, preset='veryfast',
 
     if bitrate:
         stream.bit_rate = bitrate
+        del opts['crf']
 
     for frame in frames_enc:
         vf = av.VideoFrame.from_ndarray(frame, format='rgb24')

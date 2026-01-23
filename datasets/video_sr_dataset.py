@@ -4,12 +4,24 @@ import random
 import math
 import numpy as np
 import warnings
+from typing import Callable, Dict
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torchvision import io as tv_io
 from .degradations import degrade_clip_with_avc
 from .degradation_kernels import filter2D, circular_lowpass_kernel, random_mixed_kernels
+
+
+def register_degradation(name: str):
+    if not isinstance(name, str) or not name:
+        raise ValueError("register_degradation(name=...) requires a non-empty string")
+
+    def decorator(fn: Callable):
+        fn._deg_key = name
+        return fn
+
+    return decorator
 
 
 class VideoSRDataset(Dataset):
@@ -39,19 +51,7 @@ class VideoSRDataset(Dataset):
         self.custom_final_resize_modes = custom_opt.get('final_resize_modes', ['area','bilinear','bicubic'])
         self.custom_degradation_pipeline = custom_opt.get('pipeline', [])
 
-        self.DEGRADATION_REGISTRY = {
-            "sinc": self._degrade_sinc,
-            "blur": self._degrade_blur,
-            "resize": self._degrade_resize,
-            "gaussian_noise": self._degrade_gaussian_noise,
-            "poisson_noise": self._degrade_poisson_noise,
-            "jpeg_compress": self._jpeg_compress,
-            "avc_compress": self._avc_compress,
-            'blur_randwalk': self._blur_randwalk,
-            'resize_randwalk': self._resize_randwalk,
-            'gaussian_noise_randwalk': self._gaussian_noise_randwalk,
-            'poisson_noise_randwalk': self._poisson_noise_randwalk,
-        }
+        self.DEGRADATION_REGISTRY = self._build_degradation_registry()
 
         if use_degradations and use_custom_degradations:
             raise ValueError("Cannot use both Real-ESRGAN and custom degradation pipelines simultaneously.")
@@ -100,6 +100,7 @@ class VideoSRDataset(Dataset):
         self.final_sinc_prob = cfg.get('final_sinc_prob', 0.8)
         # AVC settings
         self.avc_crf_range = cfg.get("avc_crf_range", (10, 37))
+        self.avc_bitrate_range = cfg.get("avc_bitrate_range", None)
         self.avc_gop = cfg.get("avc_gop", 60)
         self.avc_preset = cfg.get("avc_preset", 'veryfast')
         self.avc_tune = cfg.get("avc_tune", None)
@@ -246,7 +247,44 @@ class VideoSRDataset(Dataset):
             lq_patches = torch.flip(lq_patches, dims=[3])
             hr_patches = torch.flip(hr_patches, dims=[3])
 
+        # Random vertical flip for data augmentation
+        if random.random() < 0.5:
+            lq_patches = torch.flip(lq_patches, dims=[2])
+            hr_patches = torch.flip(hr_patches, dims=[2])
+
+        # Random transpose H <-> W
+        if random.random() < 0.5:
+            lq_patches = lq_patches.transpose(2, 3)
+            hr_patches = hr_patches.transpose(2, 3)
+
         return lq_patches, hr_patches
+    
+
+    def _build_degradation_registry(self) -> Dict[str, Callable]:
+        reg: Dict[str, Callable] = {}
+
+        for attr_name in dir(self):
+            if attr_name.startswith("__"):
+                continue
+            member = getattr(self, attr_name, None)
+            if not callable(member):
+                continue
+
+            # If member is a bound method, attributes might live on member.__func__
+            fn_obj = getattr(member, "__func__", member)
+            key = getattr(fn_obj, "_deg_key", None)
+            if not key:
+                continue
+
+            # Register canonical key
+            if key in reg:
+                raise ValueError(
+                    f"Duplicate degradation key '{key}' registered by both "
+                    f"'{reg[key].__name__}' and '{attr_name}'"
+                )
+            reg[key] = member
+
+        return reg
 
 
     def _run_degradation(self, hr_clip: torch.Tensor) -> torch.Tensor:
@@ -325,11 +363,12 @@ class VideoSRDataset(Dataset):
                     self.degradation_opts['poisson_scale_range']
                 )
 
+
+        out = self._jpeg_compress(out, self.degradation_opts['jpeg_range'])
+
         # ------ Stage 1: compression ------
         if random.random() < self.avc_prob:
-            out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune)
-        else:
-            out = self._jpeg_compress(out, self.degradation_opts['jpeg_range'])
+            out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune, self.avc_bitrate_range)
 
         # ------ Stage 2: kernel sampling & blur ------  
         if random.random() < self.second_blur_prob:
@@ -416,15 +455,13 @@ class VideoSRDataset(Dataset):
         if random.random() < 0.5:
             out = F.interpolate(out, size=(H_lq, W_lq), mode=random.choice(self.degradation_opts.get('resize_modes2', ['area','bilinear','bicubic'])))
             out = filter2D(out, final_kernel).clamp(0.0, 1.0)
+            out = self._jpeg_compress(out, self.degradation_opts['jpeg_range2'])
             if random.random() < self.avc_prob and self.avc_passes > 1:
-                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune)
-            else:
-                out = self._jpeg_compress(out, self.degradation_opts['jpeg_range2'])
+                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune, self.avc_bitrate_range)
         else:
+            out = self._jpeg_compress(out, self.degradation_opts['jpeg_range2'])
             if random.random() < self.avc_prob and self.avc_passes > 1:
-                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune)
-            else:
-                out = self._jpeg_compress(out, self.degradation_opts['jpeg_range2'])
+                out = self._avc_compress(out, self.avc_crf_range, self.avc_gop, self.avc_preset, self.avc_tune, self.avc_bitrate_range)
             out = F.interpolate(out, size=(H_lq, W_lq), mode=random.choice(self.degradation_opts.get('resize_modes2', ['area','bilinear','bicubic'])))
             out = filter2D(out, final_kernel).clamp(0.0, 1.0)
 
@@ -454,6 +491,7 @@ class VideoSRDataset(Dataset):
         return out.clamp(0.0, 1.0)
 
 
+    @register_degradation("sinc")
     def _degrade_sinc(
         self,
         clip: torch.Tensor,
@@ -470,6 +508,7 @@ class VideoSRDataset(Dataset):
         return filter2D(clip, kern_t).clamp(0.0, 1.0)
 
 
+    @register_degradation("blur")
     def _degrade_blur(
         self,
         clip: torch.Tensor,
@@ -501,7 +540,8 @@ class VideoSRDataset(Dataset):
         kernel_t = torch.from_numpy(kern).to(device)
         return filter2D(clip, kernel_t).clamp(0.0, 1.0)
     
-    
+
+    @register_degradation("resize")
     def _degrade_resize(
         self,
         clip: torch.Tensor,
@@ -516,6 +556,7 @@ class VideoSRDataset(Dataset):
         return out
     
 
+    @register_degradation("gaussian_noise")
     def _degrade_gaussian_noise(
         self,
         clip: torch.Tensor,
@@ -534,6 +575,7 @@ class VideoSRDataset(Dataset):
         return (clip + noise).clamp(0.0, 1.0)
     
 
+    @register_degradation("poisson_noise")
     def _degrade_poisson_noise(
         self,
         clip: torch.Tensor,
@@ -549,6 +591,7 @@ class VideoSRDataset(Dataset):
         return (img_q + shot_noise * scale_p).clamp(0.0, 1.0)
 
 
+    @register_degradation("jpeg_compress")
     def _jpeg_compress(self, clip: torch.Tensor, quality_range) -> torch.Tensor:
         compressed_frames = []
         for frame in clip:
@@ -560,10 +603,14 @@ class VideoSRDataset(Dataset):
         return torch.stack(compressed_frames, dim=0)
 
 
-    def _avc_compress(self, clip: torch.Tensor, crf_range, gop, preset, tune) -> torch.Tensor:
+    @register_degradation("avc_compress")
+    def _avc_compress(self, clip: torch.Tensor, crf_range, gop, preset, tune, bitrate_range=None) -> torch.Tensor:
         arr = (clip.permute(0,2,3,1).cpu().numpy() * 255).astype(np.uint8)
         crf = random.randint(*crf_range)
-        dec = degrade_clip_with_avc(arr, crf=crf, gop=gop, preset=preset, tune=tune)
+        bitrate = None
+        if bitrate_range:
+            bitrate = random.randint(*bitrate_range)
+        dec = degrade_clip_with_avc(arr, crf=crf, gop=gop, preset=preset, tune=tune, bitrate=bitrate)
         return torch.from_numpy(dec).permute(0,3,1,2).float() / 255.0
 
 
@@ -584,6 +631,7 @@ class VideoSRDataset(Dataset):
         return y
 
 
+    @register_degradation("blur_randwalk")
     def _blur_randwalk(self, clip, kernel_sizes, kernel_list, kernel_prob,
                    sigma_range, betag_range, betap_range,
                    step=0.02,
@@ -675,6 +723,7 @@ class VideoSRDataset(Dataset):
         return torch.cat(outs, dim=0).clamp_(0, 1)
 
 
+    @register_degradation("resize_randwalk")
     def _resize_randwalk(self, clip, resize_range, modes, step=0.02):
         T = clip.shape[0]
         mode = random.choice(modes)
@@ -683,6 +732,7 @@ class VideoSRDataset(Dataset):
         return torch.cat([self._resize_randwalk_helper(clip[t:t+1], s[t], mode) for t in range(T)], dim=0)
 
 
+    @register_degradation("gaussian_noise_randwalk")
     def _gaussian_noise_randwalk(self, clip, sigma_range, gray_noise_prob=0.0, step=0.10):
         T = clip.shape[0]
         s0 = random.uniform(*sigma_range)
@@ -696,6 +746,7 @@ class VideoSRDataset(Dataset):
         return torch.cat(outs, dim=0)
 
 
+    @register_degradation("poisson_noise_randwalk")
     def _poisson_noise_randwalk(self, clip, scale_p_range, step=0.005):
         T = clip.shape[0]
         s0 = random.uniform(*scale_p_range)
