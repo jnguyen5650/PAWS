@@ -6,7 +6,7 @@ from PIL import Image
 import argparse
 from tqdm import tqdm
 from utils.config import load_config
-from models.factory import MODEL_REGISTRY
+from models.registry import get_model_cls
 
 
 def super_resolve_and_save_sequences(model_path: str, config: dict):
@@ -43,9 +43,7 @@ def super_resolve_and_save_sequences(model_path: str, config: dict):
 
     # Build model instance from config
     model_name = config["model"]["name"]
-    if model_name not in MODEL_REGISTRY:
-        raise ValueError(f"Unknown generator model name: {model_name}")
-    model_cls = MODEL_REGISTRY[model_name]
+    model_cls = get_model_cls(model_name)
     model_kwargs = config["model"].copy()
     model_kwargs.pop("name", None)
     model_kwargs.pop("flow_param_keywords", None)
@@ -100,7 +98,9 @@ def super_resolve_and_save_sequences(model_path: str, config: dict):
             torch.cuda.synchronize()
         start_time = time.time()
         with torch.no_grad():
-            sr_clip = model(lr_clip).clamp_(0, 1).squeeze(0)  # (T, 3, H_s, W_s)
+            out = model(lr_clip)
+            sr_clip = out[0] if isinstance(out, (tuple, list)) else out
+            sr_clip = sr_clip.clamp_(0, 1).squeeze(0)  # (T, 3, Hs, Ws)
         if DEVICE.type == "cuda":
             torch.cuda.synchronize()
         elapsed = time.time() - start_time
