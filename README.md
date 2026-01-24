@@ -33,6 +33,7 @@ PAWS is a modular video super-resolution framework designed for both research an
 
 ## ✨ Updates
 
+- **January 23, 2026:** Added RealBasicVSR++ architecture with modular cleaning backends (RRDB, SwinIR, HAT) and dynamic refinement. Major refactor of model registry, training compatibility, and checkpointing with correct mid-epoch resume support.
 - **June 23, 2025:** Added inference script for test-time video super-resolution
 - **May 31, 2025:** Project repository initialized - dataset, training, modular config, and model registry
 
