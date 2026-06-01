@@ -88,6 +88,10 @@ def compute_total_loss(
             loss_val = losses["tv"](fake_flat)
             total_loss += lambda_dict["tv"] * loss_val
             loss_details["TV"] = lambda_dict["tv"] * loss_val.detach().cpu().item()
+        if "ssim" in losses:
+            loss_val = 1.0 - losses["ssim"](fake_flat, real_flat)
+            total_loss += lambda_dict["ssim"] * loss_val
+            loss_details["SSIM"] = lambda_dict["ssim"] * loss_val.detach().cpu().item()
         if config["losses"].get("lpips", False):
             fake_lpips = torch.clamp(fake_flat, -1, 1)
             real_lpips = real_flat
@@ -480,6 +484,9 @@ def validate_one_epoch(
                 val_loss_total += lambda_dict["charbonnier"] * losses["charbonnier"](fake, real)
             if "tv" in losses:
                 val_loss_total += lambda_dict["tv"] * losses["tv"](fake)
+            if "ssim" in losses:
+                ssim_loss = 1.0 - losses["ssim"](fake.float(), real.float())
+                val_loss_total += lambda_dict["ssim"] * ssim_loss
             if config["losses"].get("dists", False):
                 fake_dists = torch.clamp((fake + 1.0) * 0.5, 0.0, 1.0).float()
                 real_dists = torch.clamp((real + 1.0) * 0.5, 0.0, 1.0).float()

@@ -28,6 +28,7 @@ def get_lambda_dict(config):
     return {
         "charbonnier": float(config["loss_weights"].get("charbonnier", 1.0)),
         "tv": float(config["loss_weights"].get("tv", 1.0)),
+        "ssim": float(config["loss_weights"].get("ssim", 0.001)),
         "dists": float(config["loss_weights"].get("dists", 1.0)),
         "lpips": float(config["loss_weights"].get("lpips", 1.0)),
         "adv": float(config["loss_weights"].get("adv", 1.0)),
