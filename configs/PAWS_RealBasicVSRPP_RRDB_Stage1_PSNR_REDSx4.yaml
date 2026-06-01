@@ -1,0 +1,257 @@
+model:
+  name: "RealBasicVSRPlusPlus"
+  scale_factor: 4
+  mid_channels: 64
+  num_blocks: 7
+  max_residue_magnitude: 10
+  flow_model: "rapidflow"
+  flow_ckpt: "sintel"
+  cpu_cache: false
+  flow_param_keywords: ["flow_net"]
+  num_cleaning_blocks: 4
+  dynamic_refine_thres: 255
+  is_sequential_cleaning: false
+  fix_cleaning: false
+  freeze_flow: true
+  cleaning_arch: "rrdb"
+  cleaning_kwargs:
+    rrdb_gc: 32
+
+training:
+  epochs: 1200
+  batch_size: 1
+  optimizer: "adam"
+  learning_rate: 1e-4
+  flow_learning_rate: 1e-4
+  flow_lr_multiplier: 1.0
+  betas: [0.9, 0.99]
+  weight_decay: 0.0
+  fix_flow_epochs: 1200
+  fix_flow_iters: 0
+  use_amp: false
+  use_ema: true
+  ema_decay: 0.999
+  resume_mode: "resume"
+  resume_checkpoint_path: null
+  save_checkpoint_dir: "checkpoints"
+  save_checkpoint_freq: 1
+  save_every_iters: 10000
+  final_model_dir: outputs/
+
+lr_scheduler:
+  type: fixed
+  cosine:
+    T_max: 9000
+    eta_min: 1e-7
+
+dataloader:
+  train:
+    num_workers: 8
+    shuffle: true
+    persistent_workers: true
+    pin_memory: true
+  val:
+    num_workers: 4
+    shuffle: true
+    persistent_workers: true
+    pin_memory: true
+
+dataset:
+  train:
+    lr_dir: "data/REDS/lr/train"
+    hr_dir: "data/REDS/hr/train"
+    patch_size: 64
+    num_frames: 30
+  val:
+    lr_dir: "data/REDS/lr/val"
+    hr_dir: "data/REDS/hr/val"
+    patch_size: 64
+    num_frames: 30
+  test:
+    lr_dir: "data/REDS/lr/test"
+    hr_dir: "data/REDS/hr/test"
+
+degradation:
+  use_degradations: true
+
+  temporal_mode: "randwalk"
+  # Step sizes for frame-to-frame drift in randwalk mode
+  steps:
+    blur_sigma1: 0.02
+    blur_sigma2: 0.02
+    blur_rot1:   0.31416
+    blur_rot2:   0.31416
+    blur_betag1: 0.05
+    blur_betag2: 0.05
+    blur_betap1: 0.10
+    blur_betap2: 0.10
+    resize1:     0.015
+    resize2:     0.03
+    gauss_sigma1: 0.10
+    gauss_sigma2: 0.10
+    poisson1:     0.005
+    poisson2:     0.005
+
+  # ---------------- First-order (stage 1) spatial ------------------
+  blur_kernel_size: 21
+  kernel_list:      ['iso','aniso','generalized_iso','generalized_aniso','plateau_iso','plateau_aniso']
+  kernel_prob:      [0.45,0.25,0.12,0.03,0.12,0.03]
+  blur_sigma_range: [0.2,3.0]
+  betag_range:      [0.5,4.0]
+  betap_range:      [1.0,2.0]
+  sinc_prob:        0.1
+
+  resize_prob:      [0.2,0.7,0.1]    # up, down, keep
+  resize_range:     [0.15,1.5]
+  resize_modes:     ['area','bilinear','bicubic']
+
+  gaussian_noise_prob:   0.5
+  noise_range:           [1,30]
+  poisson_scale_range:   [0.05,1.0]
+  gray_noise_prob:       0.4
+
+  jpeg_range:       [30,95]
+
+  # ---------------- Second-order (stage 2) spatial ----------------
+  second_blur_prob: 0.8
+
+  blur_kernel_size2: 21
+  kernel_list2:      ['iso','aniso','generalized_iso','generalized_aniso','plateau_iso','plateau_aniso']
+  kernel_prob2:      [0.45,0.25,0.12,0.03,0.12,0.03]
+  blur_sigma_range2: [0.2,1.5]
+  betag_range2:      [0.5,4.0]
+  betap_range2:      [1.0,2.0]
+  sinc_prob2:        0.1
+
+  resize_prob2:     [0.3,0.4,0.3]
+  resize_range2:    [0.3,1.2]
+  resize_modes2:    ['area','bilinear','bicubic']
+
+  gaussian_noise_prob2:  0.5
+  noise_range2:          [1,25]
+  poisson_scale_range2:  [0.05,1.5]
+  gray_noise_prob2:      0.4
+
+  jpeg_range2:      [30,95]
+  final_sinc_prob:  0.8
+
+  # ---------------- Video (AVC) codec ----------------
+  avc_crf_range:   [10,37]
+  avc_bitrate_range: null
+  avc_gop:         60
+  avc_preset:      'veryfast'
+  avc_tune:        null
+  avc_passes:      2
+  avc_prob:        1.0
+
+custom_degradation:
+  use_custom_degradations: false
+  final_resize_modes: ['area', 'bilinear', 'bicubic'] # Required as the last step of the pipeline
+
+  # Ordered list of degradations, with each entry as a dict specifying type and params
+  pipeline:
+    - type: sinc
+      kernel_sizes: [7, 9, 11, 13, 15, 17, 19, 21]
+      prob: 0.5
+
+    - type: blur
+      kernel_sizes: [7, 9, 11, 13, 15, 17, 19, 21]
+      kernel_list: ['iso','aniso','generalized_iso']
+      kernel_prob: [0.45,0.35,0.2]
+      sigma_range: [0.2,3.0]
+      betag_range: [0.5, 4.0]
+      betap_range: [1.0, 2.0]
+      prob: 0.5
+
+    - type: resize
+      resize_prob: [0.2, 0.7, 0.1]  # up, down, keep
+      resize_range: [0.15, 1.5]
+      modes: ['area', 'bilinear', 'bicubic']
+
+    - type: gaussian_noise
+      prob: 0.5
+      sigma_range: [1, 30]
+      gray_noise_prob: 0.4
+
+    - type: poisson_noise
+      scale_p_range: [0.05, 1.0]
+      prob: 0.5
+
+    - type: jpeg_compress
+      quality_range: [30, 95]
+      prob: 0.5
+
+    - type: avc_compress
+      crf_range: [4, 40]
+      bitrate_range: null
+      gop: 60
+      preset: 'veryfast'
+      tune: null
+      prob: 1.0
+
+    - type: blur_randwalk
+      kernel_sizes: [7, 9, 11, 13, 15, 17, 19, 21]
+      kernel_list: ['iso','aniso','generalized_iso']
+      kernel_prob: [0.45,0.35,0.2]
+      sigma_range: [0.2,1.5]
+      betag_range: [0.5, 4.0]
+      betap_range: [1.0, 2.0]
+      step: 0.02
+      rot_step: 0.31416
+      betag_step: 0.05
+      betap_step: 0.10
+      prob: 1.0
+    
+    - type: resize_randwalk
+      resize_range: [0.3,1.2]
+      modes: ['area', 'bilinear', 'bicubic']
+      step: 0.03
+      prob: 1.0
+    
+    - type: gaussian_noise_randwalk
+      sigma_range: [1, 25]
+      gray_noise_prob: 0.4
+      step: 0.10
+      prob: 1.0
+    
+    - type: poisson_noise_randwalk
+      scale_p_range: [0.05, 1.5]
+      step: 0.005
+      prob: 1.0
+
+losses:
+  charbonnier: true
+  tv: false
+  dists: false
+  lpips: false
+  ldl: false
+  cleaning_charbonnier: true
+  cleaning_dists: false
+
+loss_weights:
+  charbonnier: 1.0
+  tv: 1.0
+  dists: 1.0
+  lpips: 1.0
+  adv: 0.05
+  ldl: 1.0
+  cleaning_charbonnier: 1.0
+  cleaning_dists: 0.0
+
+gan:
+  enabled: false
+  domain: "clean"
+  discriminator: "SpatioTemporalUNetDiscriminator"
+  d_learning_rate: 1e-4
+  d_betas: [0.0, 0.99]
+  d_weight_decay: 0.0
+  r1_gamma: -1.0
+  r1_every: 16
+
+logging:
+  enabled: true
+  name: "PAWS_RealBasicVSRPP_RRDB_Stage1_PSNR_REDSx4"
+
+debug:
+  nan_guard: true
+  activation_hooks: false
