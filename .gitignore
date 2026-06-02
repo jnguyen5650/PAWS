@@ -197,3 +197,4 @@ logs/
 checkpoints/
 outputs/
 data/
+metrics/cover_assets/
