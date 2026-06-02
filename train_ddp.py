@@ -18,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a VSR model.")
     parser.add_argument("config", type=str, help="Path to config YAML file")
     parser.add_argument(
-        "--local_rank", type=int, default=0,
+        "--local-rank", "--local_rank", type=int, default=0,
         help="DDP local process rank (passed automatically with torchrun)"
     )
     args = parser.parse_args()
