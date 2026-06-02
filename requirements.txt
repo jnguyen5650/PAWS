@@ -1,0 +1,24 @@
+# requirements.txt
+# Install torch/torchvision/torchaudio separately from the PyTorch CUDA index first.
+
+pyiqa>=0.1.14.1
+ptlflow>=0.4.2
+torchmetrics>=1.7.2
+
+numpy>=2.2
+opencv-python>=4.10
+PyYAML>=6.0
+pillow
+av
+torchinfo
+tqdm
+scipy
+scikit-video
+decord
+timm
+einops
+transformers>=4.37
+accelerate>=1.1
+setuptools==80.10.2
+
+streamlit
