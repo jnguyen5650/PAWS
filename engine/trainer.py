@@ -130,7 +130,7 @@ def compute_total_loss(
             D_real_mean = torch.mean(D_real.float())
             D_fake_mean = torch.mean(D_fake.float())
             loss_G_adv = (F.softplus(-(D_fake - D_real_mean)).mean() +
-                        F.softplus(D_real - D_fake_mean).mean())
+                        F.softplus(D_real - D_fake_mean).mean()) / 2
             total_loss += lambda_dict["adv"] * loss_G_adv
             loss_details["G Adv"] = lambda_dict["adv"] * loss_G_adv.detach().cpu().item()
 
@@ -353,7 +353,7 @@ def train_one_epoch(
                     loss_D = (
                         F.softplus(-(D_real_f32 - D_fake_mean)).mean()
                         + F.softplus(  D_fake_f32 - D_real_mean).mean()
-                    )
+                    ) / 2
 
                     # R1 regularization (lazy)
                     do_r1 = r1_gamma > 0.0 and global_step % r1_every == 0
