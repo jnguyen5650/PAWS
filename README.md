@@ -1,4 +1,6 @@
-# 🐾 PAWS: Perception-aligned, Warp-guided Video Super-resolution
+# 🐾 PAWS: Practical Video Super-Resolution
+
+[![PAWS Paper](https://img.shields.io/badge/PAWS-Paper-B31B1B?style=for-the-badge&labelColor=111111)](paper/PAWS_RealBasicVSRPP_Paper.pdf)
 
 **Status:** 🚧 In active development
 
@@ -6,17 +8,21 @@
 
 ## Project Overview
 
-PAWS is a modular video super-resolution framework designed for both research and deployment. It supports arbitrary power-of-two upscaling and is architected around a configuration system that specifies backbone, discriminator, and optical flow modules. The framework accommodates both distortion-based (PSNR) and perceptual (GAN-based) training, and provides support for custom degradation pipelines for both synthetic and real-world data. Mixed-precision (AMP) training is natively supported for efficient resource usage. Code and models are structured for reproducibility and extensibility, with full experiment tracking and modular integration of new components.
+PAWS is a modular video super-resolution framework for research and deployment. It supports arbitrary power-of-two upscaling and provides config-driven training, testing, evaluation, and model-publishing workflows. Generators, discriminators, optical-flow backends, losses, degradation pipelines, and tiled inference settings are defined through YAML configs which enables a wide range of VSR architectures and experimental protocols.
+
+The current paper model, PAWS RealBasicVSR++, focuses on practical real-world VSR under consumer-GPU constraints. It combines low-resolution cleaning, BasicVSR++ recurrent restoration, RAPIDFlow alignment, video-aware adversarial training, no-reference/temporal evaluation, and Pareto-guided checkpoint selection. The broader framework also supports additional generator designs, discriminator variants, degradation settings, and inference workflows.
 
 
 ## 💡 Key Features
 
-- **Flexible, modular design:** Modular config-driven pipeline—swap or extend generators, discriminators, and optical flow models with a single config change.
-- **Efficient:** Designed for practical deployment on consumer-grade hardware.
-- **Custom Dataset Pipelines:** Supports both real-world and synthetic degradations; easy to add new data transforms.
-- **Mixed-precision & AMP:** Native support for efficient training and inference on modern GPUs.
-- **Powerful logging:** Integrated TensorBoard scalars, images, and GPU memory usage for full experiment tracking.
-- **Open-source friendly:** Clear repo structure, readable code, and plug-and-play utilities for research and production.
+- **Flexible, modular design:** Config-driven pipeline for swapping or extending generators, discriminators, optical-flow models, losses, degradations, datasets, and inference settings.
+- **Efficient and deployment-aware:** Designed for practical training and inference on consumer-grade hardware, with tiled inference, overlap padding, precision controls, and optional `torch.compile`.
+- **Custom dataset and degradation pipelines:** Supports paired video datasets, synthetic degradations, real-world degradation recipes, and extensible data transforms.
+- **Distortion, perceptual, and adversarial training:** Supports PSNR-style training, perceptual losses, GAN training, EMA weights, AMP/FP32 training, checkpoint resume, and single-process or DDP execution.
+- **Evaluation and checkpoint selection tools:** Includes full-reference metrics, no-reference metrics, video-quality scoring, optical-flow temporal diagnostics, and coarse-to-fine checkpoint search.
+- **Model publishing and app inference:** Packages trained generator or EMA weights into portable `.paws.pth` artifacts for the demo inference app.
+- **Experiment tracking and reproducibility:** Integrated TensorBoard scalars, image logging, GPU memory tracking, structured configs, checkpoints, and reusable command-line utilities.
+- **Open-source friendly:** Clear repo structure and documented workflows for research, experimentation, and deployment.
 
 
 ## 📦 Installation and Setup
@@ -135,11 +141,12 @@ Input frames are sorted by filename before inference. Output frames are written 
 - ✅ Inference & demo scripts
 - 🔲 Model weights and sample outputs
 - 🔲 Web/desktop demo app
-- 🔲 Paper/report
+- ✅ Paper/report
 
 
 ## ✨ Updates
 
+- **June 30, 2026:** Added the [PAWS RealBasicVSR++ paper](paper/PAWS_RealBasicVSRPP_Paper.pdf), covering the current model, evaluation protocol, and release checkpoints.
 - **June 1, 2026:** Expanded the PAWS training, inference, and evaluation workflow. Added REDS x4 configs for RealBasicVSR++, SSIM loss support, tiled and precision-aware testing with optional `torch.compile`, full-reference/no-reference/Ewarp benchmarking, COVER scoring, checkpoint search, portable model publishing, pinned requirements, and torchrun-compatible DDP launch handling.
 - **January 23, 2026:** Added RealBasicVSR++ architecture with modular cleaning backends (RRDB, SwinIR, HAT) and dynamic refinement. Major refactor of model registry, training compatibility, and checkpointing with correct mid-epoch resume support.
 - **June 23, 2025:** Added inference script for test-time video super-resolution
@@ -148,12 +155,17 @@ Input frames are sorted by filename before inference. Output frames are written 
 
 ## 🤖 Model Zoo
 
-| Backbone  | Model  | Params  | Config  | Download  |
+| Model | Backbone | Config | Download | Notes |
 | ------------ | ------------ | ------------ | ------------ | ------------ |
-| BasicVSR++  | PAWS_BasicVSRPP_PSNR_REDSx4  | 7.7M  | -  | Coming Soon  |
-| BasicVSR++  |  PAWS_BasicVSRPP_GAN_REDSx4  | 7.7M  | -  | Coming Soon  |
-| BasicVSR++  | PAWS_BasicVSRPP_Real_PSNR_REDSx4  | 7.7M  | -  | Coming Soon  |
-| BasicVSR++  | PAWS_BasicVSRPP_Real_GAN_REDSx4  | 7.7M  | -  | Coming Soon  |
+| PAWS RealBasicVSR++-HAT-LPIPS-TRes | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4.yaml` | EMA / App | Recommended model |
+| PAWS RealBasicVSR++-HAT-Stage1-PSNR | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage1_PSNR_REDSx4.yaml` | EMA | Pre-GAN checkpoint |
+| PAWS RealBasicVSR++-HAT-LPIPS-TAvg | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4.yaml` | EMA | Stage 2 ablation |
+| PAWS RealBasicVSR++-HAT-DISTS | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4_DISTS.yaml` | EMA | Stage 2 ablation |
+| PAWS RealBasicVSR++-HAT-LPIPS-SpatialD | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4_SpatialDiscriminator.yaml` | EMA | Stage 2 ablation |
+
+EMA files are raw generator weights for `test.py` and research workflows. The App download is a portable `.paws.pth` artifact for the PAWS app/demo loader.
+
+LPIPS-TAvg and LPIPS-TRes share the same base Stage 2 LPIPS config. They differ by the discriminator-output behavior used when the released checkpoints were trained.
 
 
 ## ⚖️ License and Acknowledgement
