@@ -20,5 +20,6 @@ einops
 transformers>=4.37
 accelerate>=1.1
 setuptools==80.10.2
+rich
 
 streamlit

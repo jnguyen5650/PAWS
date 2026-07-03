@@ -16,6 +16,7 @@ Examples:
     --ckpt model_G_EMA.pth --which EMA
 """
 
+from utils.traceback import *  # noqa: F401, F403
 import argparse
 import os
 import re

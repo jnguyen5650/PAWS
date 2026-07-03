@@ -14,6 +14,7 @@ Examples:
   python -m tools.compute_nr data/REDS/hr/test --json-out outputs/nr_report.json
 """
 
+from utils.traceback import *  # noqa: F401, F403
 import os
 import sys
 import json

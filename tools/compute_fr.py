@@ -15,6 +15,7 @@ Examples:
     --json-out outputs/fr_report.json
 """
 
+from utils.traceback import *  # noqa: F401, F403
 import os
 import sys
 import json

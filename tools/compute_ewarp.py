@@ -18,6 +18,7 @@ Examples:
     --flow-ckpt sintel
 """
 
+from utils.traceback import *  # noqa: F401, F403
 import argparse
 import json
 import os
