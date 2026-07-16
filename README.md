@@ -1,6 +1,7 @@
 # 🐾 PAWS: Practical Video Super-Resolution
 
 [![PAWS Paper](https://img.shields.io/badge/PAWS-Paper-B31B1B?style=for-the-badge&labelColor=111111)](paper/PAWS_RealBasicVSRPP_Paper.pdf)
+[![PAWS Models](https://img.shields.io/badge/PAWS-Models-FFD21E?style=for-the-badge&logo=huggingface&logoColor=FFD21E&labelColor=111111)](https://huggingface.co/jnguyen5650/PAWS)
 
 **Status:** 🚧 In active development
 
@@ -157,18 +158,31 @@ Input frames are sorted by filename before inference. Output frames are written 
 
 | Model | Backbone | Config | Download | Notes |
 | ------------ | ------------ | ------------ | ------------ | ------------ |
-| PAWS RealBasicVSR++-HAT-LPIPS-TRes | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4.yaml` | EMA / App | Recommended model |
-| PAWS RealBasicVSR++-HAT-Stage1-PSNR | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage1_PSNR_REDSx4.yaml` | EMA | Pre-GAN checkpoint |
-| PAWS RealBasicVSR++-HAT-LPIPS-TAvg | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4.yaml` | EMA | Stage 2 ablation |
-| PAWS RealBasicVSR++-HAT-DISTS | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4_DISTS.yaml` | EMA | Stage 2 ablation |
-| PAWS RealBasicVSR++-HAT-LPIPS-SpatialD | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4_SpatialDiscriminator.yaml` | EMA | Stage 2 ablation |
+| PAWS RealBasicVSR++-HAT-LPIPS-TRes | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4.yaml` | [EMA](https://huggingface.co/jnguyen5650/PAWS/resolve/main/PAWS_RealBasicVSRPP_HAT_Stage2_LPIPS_TRes_REDSx4_G_EMA.pth?download=true) / [App](https://huggingface.co/jnguyen5650/PAWS/resolve/main/published_models/PAWS_RealBasicVSRPP_HAT_Stage2_LPIPS_TRes_REDSx4_G_EMA.paws.pth?download=true) | Recommended model |
+| PAWS RealBasicVSR++-HAT-Stage1-PSNR | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage1_PSNR_REDSx4.yaml` | [EMA](https://huggingface.co/jnguyen5650/PAWS/resolve/main/PAWS_RealBasicVSRPP_HAT_Stage1_PSNR_REDSx4_G_EMA.pth?download=true) | Pre-GAN checkpoint |
+| PAWS RealBasicVSR++-HAT-LPIPS-TAvg | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4.yaml` | [EMA](https://huggingface.co/jnguyen5650/PAWS/resolve/main/PAWS_RealBasicVSRPP_HAT_Stage2_LPIPS_TAvg_REDSx4_G_EMA.pth?download=true) | Stage 2 ablation |
+| PAWS RealBasicVSR++-HAT-DISTS | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4_DISTS.yaml` | [EMA](https://huggingface.co/jnguyen5650/PAWS/resolve/main/PAWS_RealBasicVSRPP_HAT_Stage2_DISTS_REDSx4_G_EMA.pth?download=true) | Stage 2 ablation |
+| PAWS RealBasicVSR++-HAT-LPIPS-SpatialD | RealBasicVSR++ | `configs/PAWS_RealBasicVSRPP_HAT_Stage2_GAN_REDSx4_SpatialDiscriminator.yaml` | [EMA](https://huggingface.co/jnguyen5650/PAWS/resolve/main/PAWS_RealBasicVSRPP_HAT_Stage2_LPIPS_SpatialD_REDSx4_G_EMA.pth?download=true) | Stage 2 ablation |
 
 EMA files are raw generator weights for `test.py` and research workflows. The App download is a portable `.paws.pth` artifact for the PAWS app/demo loader.
 
 LPIPS-TAvg and LPIPS-TRes share the same base Stage 2 LPIPS config. They differ by the discriminator-output behavior used when the released checkpoints were trained.
 
 
-## ⚖️ License and Acknowledgement
+## 📝 Citation
+
+If you use these weights or the PAWS codebase, please cite the PAWS preprint:
+
+```bibtex
+@article{nguyen2026paws,
+  title={PAWS: Practical Real-World Video Super-Resolution with Modular Cleaning},
+  author={Nguyen, Justin},
+  journal={Preprint},
+  year={2026}
+}
+```
+
+## ⚖️ License and Acknowledgements
 
 This project is released under the Apache 2.0 license.
 See the [NOTICE](NOTICE.md) file for acknowledgements and third-party code attributions.
