@@ -26,6 +26,20 @@ The current paper model, PAWS RealBasicVSR++, focuses on practical real-world VS
 - **Open-source friendly:** Clear repo structure and documented workflows for research, experimentation, and deployment.
 
 
+## 🎥 Demo Videos
+
+See PAWS RealBasicVSR++ in action on real-world video content. These demo clips show input and output comparisons.
+
+https://github.com/user-attachments/assets/5d870192-c451-46c5-afa4-ed76df7858dc
+
+https://github.com/user-attachments/assets/b8b31f8c-464a-4da5-b255-8077bd143a37
+
+https://github.com/user-attachments/assets/5b17b6ec-01b7-452f-b855-612a4d8df722
+
+> [!NOTE]  
+> Demo videos are compressed for web viewing and may not fully represent the quality of actual model outputs.
+
+
 ## 📦 Installation and Setup
 
 Python 3.12 is recommended. Install the PyTorch stack before the rest of the dependencies to avoid accidentally installing CPU-only builds, especially on Windows.
@@ -140,13 +154,14 @@ Input frames are sorted by filename before inference. Output frames are written 
 - ✅ Custom degradation pipeline
 - ✅ Full model config registry (generator/discriminator/flow)
 - ✅ Inference & demo scripts
-- 🔲 Model weights and sample outputs
+- ✅ Model weights and sample outputs
 - 🔲 Web/desktop demo app
 - ✅ Paper/report
 
 
 ## ✨ Updates
 
+- **July 17, 2026:** Released model weights on [HuggingFace](https://huggingface.co/jnguyen5650/PAWS). Added demo videos and updated the [PAWS RealBasicVSR++ paper](paper/PAWS_RealBasicVSRPP_Paper.pdf).
 - **June 30, 2026:** Added the [PAWS RealBasicVSR++ paper](paper/PAWS_RealBasicVSRPP_Paper.pdf), covering the current model, evaluation protocol, and release checkpoints.
 - **June 1, 2026:** Expanded the PAWS training, inference, and evaluation workflow. Added REDS x4 configs for RealBasicVSR++, SSIM loss support, tiled and precision-aware testing with optional `torch.compile`, full-reference/no-reference/Ewarp benchmarking, COVER scoring, checkpoint search, portable model publishing, pinned requirements, and torchrun-compatible DDP launch handling.
 - **January 23, 2026:** Added RealBasicVSR++ architecture with modular cleaning backends (RRDB, SwinIR, HAT) and dynamic refinement. Major refactor of model registry, training compatibility, and checkpointing with correct mid-epoch resume support.
