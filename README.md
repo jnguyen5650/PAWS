@@ -171,18 +171,6 @@ streamlit run app/app.py
 In the UI, select a published model, upload supported video files or switch to local-folder mode, choose tiling/runtime/export settings, and save either output videos or PNG frame sequences. By default, outputs are written under `~/Downloads/PAWS_Upscaled_Videos`, but you can choose another output directory in the app.
 
 
-## 🚧 Roadmap
-
-- ✅ Modular PyTorch training pipeline
-- ✅ Advanced dataset/dataloader (real + synthetic)
-- ✅ Custom degradation pipeline
-- ✅ Full model config registry (generator/discriminator/flow)
-- ✅ Inference & demo scripts
-- ✅ Model weights and sample outputs
-- ✅ Web/desktop demo app
-- ✅ Paper/report
-
-
 ## ✨ Updates
 
 - **July 21, 2026:** Added the Streamlit demo app for batch video inference on published model artifacts.
