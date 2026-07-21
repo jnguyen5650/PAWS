@@ -1,0 +1,466 @@
+/* Streamlit suppression */
+header {
+  visibility: hidden;
+}
+
+footer {
+  visibility: hidden;
+}
+
+div[data-testid="stAppDeployButton"] {
+  visibility: hidden;
+}
+
+#MainMenu {
+  visibility: hidden;
+}
+
+/* Theme tokens */
+:root {
+  --bg: #050607;
+  --panel: rgba(18, 18, 20, 0.70);
+  --panel-2: rgba(10, 10, 12, 0.75);
+  --text: #F5F7FF;
+  --muted: rgba(210, 214, 230, 0.65);
+  --accent: #2FF6FF;
+  --accent-2: #41A7FF;
+  --border: rgba(255, 255, 255, 0.12);
+  --border-2: rgba(47, 246, 255, 0.22);
+  --glow: rgba(47, 246, 255, 0.22);
+}
+
+/* App shell and animated background */
+div[data-testid="stAppViewContainer"] {
+  background: var(--bg);
+  color: var(--text);
+}
+
+div[data-testid="stAppViewContainer"]::before,
+div[data-testid="stAppViewContainer"]::after {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes haze-drift {
+  0% {
+    transform: translate(-6%, -4%) scale(1.02);
+  }
+
+  50% {
+    transform: translate(5%, 3%) scale(1.05);
+  }
+
+  100% {
+    transform: translate(-6%, -4%) scale(1.02);
+  }
+}
+
+div[data-testid="stAppViewContainer"]::before {
+  opacity: 1;
+  filter: blur(22px);
+  background:
+    radial-gradient(55% 45% at 15% 12%, rgba(47, 246, 255, 0.16), transparent 68%),
+    radial-gradient(50% 40% at 80% 18%, rgba(65, 167, 255, 0.12), transparent 70%),
+    radial-gradient(60% 60% at 45% 85%, rgba(47, 246, 255, 0.10), transparent 72%),
+    linear-gradient(160deg, #050607 0%, #07090B 45%, #040505 100%);
+  animation: 30s ease-in-out infinite haze-drift;
+}
+
+div[data-testid="stAppViewContainer"] > .main,
+div[data-testid="stSidebar"] {
+  position: relative;
+  z-index: 1 !important;
+}
+
+/* Main layout spacing and header */
+.main .block-container {
+  max-width: 1200px;
+  padding-top: 3.5rem;
+  /* Reserve space so the fixed footer does not cover the last section. */
+  padding-bottom: 110px;
+}
+
+.header-subtitle {
+  margin-bottom: 2.25rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+/* Panel and card containers */
+.st-key-upload-container,
+.st-key-config-container,
+.st-key-output-container,
+.st-key-processing-container {
+  background: linear-gradient(135deg, rgba(18, 18, 20, 0.72), rgba(10, 10, 12, 0.82));
+  border: 1px solid var(--border) !important;
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+  will-change: transform;
+}
+
+.st-key-upload-container:hover,
+.st-key-config-container:hover,
+.st-key-output-container:hover,
+.st-key-processing-container:hover {
+  border-color: rgba(47, 246, 255, 0.45) !important;
+  box-shadow:
+    0 22px 52px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(47, 246, 255, 0.12),
+    0 0 30px var(--glow);
+}
+
+/* Buttons and form controls */
+.stButton > button {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)) !important;
+  color: #001012 !important;
+  border: 1px solid rgba(47, 246, 255, 0.35) !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.35),
+    0 0 18px rgba(47, 246, 255, 0.20);
+  font-weight: 700 !important;
+  transform: scale(1);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  will-change: transform;
+}
+
+.stButton > button:hover {
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.42),
+    0 0 26px rgba(47, 246, 255, 0.28);
+  filter: brightness(1.04);
+  transform: scale(1.01);
+}
+
+.stButton > button:active {
+  transform: scale(0.985);
+}
+
+div[data-testid="stTextInput"],
+div[data-testid="stNumberInput"],
+div[data-testid="stTextArea"] {
+  opacity: 1 !important;
+}
+
+/* Streamlit wraps inputs with BaseWeb containers, so style the wrappers directly. */
+div[data-testid="stTextInput"] [data-baseweb="input"],
+div[data-testid="stTextInput"] [data-baseweb="base-input"],
+div[data-testid="stNumberInput"] [data-baseweb="input"],
+div[data-testid="stNumberInput"] [data-baseweb="base-input"],
+div[data-testid="stTextArea"] [data-baseweb="textarea"],
+div[data-testid="stTextArea"] [data-baseweb="base-input"],
+[data-baseweb="select"] > div {
+  background: rgba(0, 0, 0, 0.35) !important;
+  color: var(--text) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
+div[data-testid="stTextInput"] [data-baseweb="base-input"]:focus-within,
+div[data-testid="stNumberInput"] [data-baseweb="input"]:focus-within,
+div[data-testid="stNumberInput"] [data-baseweb="base-input"]:focus-within,
+div[data-testid="stTextArea"] [data-baseweb="textarea"]:focus-within,
+div[data-testid="stTextArea"] [data-baseweb="base-input"]:focus-within,
+[data-baseweb="select"] > div:focus-within {
+  border-color: rgba(47, 246, 255, 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(47, 246, 255, 0.18) !important;
+}
+
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+div[data-testid="stTextArea"] textarea,
+[data-baseweb="select"] input {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+
+div[data-testid="stTextInput"] input::placeholder,
+div[data-testid="stNumberInput"] input::placeholder,
+div[data-testid="stTextArea"] textarea::placeholder {
+  color: var(--muted) !important;
+  opacity: 0.85 !important;
+}
+
+div[data-testid="stTextInput"] input:disabled,
+div[data-testid="stNumberInput"] input:disabled,
+div[data-testid="stTextArea"] textarea:disabled,
+[data-baseweb="select"] input[aria-disabled="true"],
+[data-baseweb="select"] input:disabled {
+  opacity: 1 !important;
+  color: var(--text) !important;
+  -webkit-text-fill-color: var(--text) !important;
+}
+
+/* Metrics, model metadata, and run metadata */
+.metric-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.stat-label {
+  margin-bottom: 6px;
+  color: rgba(210, 214, 230, 0.7);
+  font-size: 0.75rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  color: var(--text);
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.model-meta-header {
+  margin: 0 0 0.8rem 0;
+}
+
+.model-meta-kicker {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: rgba(210, 214, 230, 0.68);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.model-meta-title {
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.model-stat-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 92px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.model-stat-label {
+  margin-bottom: 6px;
+  color: rgba(210, 214, 230, 0.68);
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.model-stat-value {
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.model-stat-value-architecture {
+  font-size: 0.95rem;
+}
+
+.model-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+.model-detail-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.75rem;
+}
+
+.model-detail-label {
+  color: rgba(210, 214, 230, 0.78);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.model-detail-value {
+  display: inline-block;
+  min-width: 0;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: rgba(110, 255, 194, 0.88);
+  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.87rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  padding: 0.28rem 0.45rem;
+}
+
+.run-footer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: 1rem;
+}
+
+.run-footer-cell {
+  min-width: 0;
+}
+
+.run-footer-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+}
+
+.run-footer-meta-item {
+  color: rgba(210, 214, 230, 0.65);
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.run-footer-cell-id {
+  justify-self: end;
+  color: rgba(210, 214, 230, 0.65);
+  font-size: 0.78rem;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.run-footer-id-label {
+  color: rgba(210, 214, 230, 0.65);
+}
+
+.run-footer-id-value {
+  color: rgba(110, 255, 194, 0.88);
+  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.84rem;
+}
+
+.st-key-active-job-controls {
+  margin-top: 0.95rem;
+}
+
+/* Background iframe pinning */
+#netbg {
+  z-index: -1;
+}
+
+/* Match only the iframe injected for the animated network background. */
+iframe[data-testid="stIFrame"][srcdoc*="netbg-host"] {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+/* Fixed footer and top anchor */
+.stFooter {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 999;
+  pointer-events: auto;
+  margin: 0 !important;
+  padding: 8px 18px;
+  background: rgba(10, 12, 16, 0.78);
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 0;
+  box-shadow:
+    0 -12px 30px rgba(0, 0, 0, 0.45),
+    0 0 24px rgba(47, 246, 255, 0.10);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.stFooter .footer-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.stFooter .footer-content {
+  text-align: center;
+}
+
+.stFooter .footer-title {
+  margin: 0;
+  color: rgba(245, 247, 255, 0.92);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.stFooter .footer-link {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(47, 246, 255, 0.20);
+  border-radius: 10px;
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.stFooter .footer-link:hover {
+  border-color: rgba(47, 246, 255, 0.38);
+  box-shadow: 0 0 18px rgba(47, 246, 255, 0.18);
+}
+
+@media (max-width: 768px), (max-aspect-ratio: 1/1) {
+  .main .block-container {
+    padding-bottom: 160px;
+  }
+
+  .stFooter .footer-row {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stFooter .footer-link {
+    position: static;
+    top: auto;
+    right: auto;
+    transform: none;
+  }
+}
+
+#top {
+  display: block;
+  position: relative;
+  top: -10rem;
+  visibility: hidden;
+}

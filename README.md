@@ -3,9 +3,6 @@
 [![PAWS Paper](https://img.shields.io/badge/PAWS-Paper-B31B1B?style=for-the-badge&labelColor=111111)](paper/PAWS_RealBasicVSRPP_Paper.pdf)
 [![PAWS Models](https://img.shields.io/badge/PAWS-Models-FFD21E?style=for-the-badge&logo=huggingface&logoColor=FFD21E&labelColor=111111)](https://huggingface.co/jnguyen5650/PAWS)
 
-**Status:** 🚧 In active development
-
----
 
 ## Project Overview
 
@@ -147,6 +144,33 @@ data/REDS/
 Input frames are sorted by filename before inference. Output frames are written as PNG files named `00000000.png`, `00000001.png`, and so on.
 
 
+## 🎬 Demo App
+
+Use the Streamlit demo app for easy inference on video files. This is the recommended path when you want to process videos directly instead of preparing image frame sequences for `test.py`.
+
+> [!IMPORTANT]
+> **Local use only.** This demo app is intended for local development and testing. 
+> It is not hardened for production deployment, network exposure, or untrusted input.
+
+Before launching the app, publish a compatible `.paws.pth` model artifact:
+
+```bash
+python -m tools.publish_model --config configs/PAWS_RealBasicVSRPP_HAT_Stage1_PSNR_REDSx4.yaml --ckpt outputs/PAWS_RealBasicVSRPP_HAT_Stage1_PSNR_REDSx4_G_EMA.pth --which EMA
+```
+
+Published models are written to `outputs/published_models/` by default, which is also the app's default model directory.
+
+The demo app only loads `.paws.pth` artifacts created by `tools/publish_model.py`. It will not load direct checkpoints from the training scripts or generator state dicts produced by `tools/extract_submodel.py`.
+
+Launch the app with:
+
+```bash
+streamlit run app/app.py
+```
+
+In the UI, select a published model, upload supported video files or switch to local-folder mode, choose tiling/runtime/export settings, and save either output videos or PNG frame sequences. By default, outputs are written under `~/Downloads/PAWS_Upscaled_Videos`, but you can choose another output directory in the app.
+
+
 ## 🚧 Roadmap
 
 - ✅ Modular PyTorch training pipeline
@@ -155,12 +179,13 @@ Input frames are sorted by filename before inference. Output frames are written 
 - ✅ Full model config registry (generator/discriminator/flow)
 - ✅ Inference & demo scripts
 - ✅ Model weights and sample outputs
-- 🔲 Web/desktop demo app
+- ✅ Web/desktop demo app
 - ✅ Paper/report
 
 
 ## ✨ Updates
 
+- **July 21, 2026:** Added the Streamlit demo app for batch video inference on published model artifacts.
 - **July 17, 2026:** Released model weights on [HuggingFace](https://huggingface.co/jnguyen5650/PAWS). Added demo videos and updated the [PAWS RealBasicVSR++ paper](paper/PAWS_RealBasicVSRPP_Paper.pdf).
 - **June 30, 2026:** Added the [PAWS RealBasicVSR++ paper](paper/PAWS_RealBasicVSRPP_Paper.pdf), covering the current model, evaluation protocol, and release checkpoints.
 - **June 1, 2026:** Expanded the PAWS training, inference, and evaluation workflow. Added REDS x4 configs for RealBasicVSR++, SSIM loss support, tiled and precision-aware testing with optional `torch.compile`, full-reference/no-reference/Ewarp benchmarking, COVER scoring, checkpoint search, portable model publishing, pinned requirements, and torchrun-compatible DDP launch handling.
