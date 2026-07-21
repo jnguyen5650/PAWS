@@ -3,6 +3,7 @@
 [![PAWS Paper](https://img.shields.io/badge/PAWS-Paper-B31B1B?style=for-the-badge&labelColor=111111)](paper/PAWS_RealBasicVSRPP_Paper.pdf)
 [![PAWS Models](https://img.shields.io/badge/PAWS-Models-FFD21E?style=for-the-badge&logo=huggingface&logoColor=FFD21E&labelColor=111111)](https://huggingface.co/jnguyen5650/PAWS)
 
+![PAWS Demo App](assets/app-screenshot.png)
 
 ## Project Overview
 
