@@ -94,7 +94,7 @@ def build_dataloaders(config):
     train_dataset_config = config["dataset"]["train"]
     val_dataset_config = config["dataset"]["val"]
 
-    degredation_config = config["degradation"]
+    degradation_config = config["degradation"]
     custom_degradation_config = config["custom_degradation"]
 
     train_dataset = VideoSRDataset(
@@ -103,8 +103,8 @@ def build_dataloaders(config):
         scale_factor=scale_factor,
         patch_size=train_dataset_config["patch_size"],
         num_frames=train_dataset_config["num_frames"],
-        use_degradations=degredation_config.get("use_degradations", False),
-        real_opt=degredation_config,
+        use_degradations=degradation_config.get("use_degradations", False),
+        real_opt=degradation_config,
         use_custom_degradations=custom_degradation_config.get("use_custom_degradations", False),
         custom_opt=custom_degradation_config
     )
@@ -115,8 +115,8 @@ def build_dataloaders(config):
         scale_factor=scale_factor,
         patch_size=val_dataset_config["patch_size"],
         num_frames=val_dataset_config["num_frames"],
-        use_degradations=degredation_config.get("use_degradations", False),
-        real_opt=degredation_config,
+        use_degradations=degradation_config.get("use_degradations", False),
+        real_opt=degradation_config,
         use_custom_degradations=custom_degradation_config.get("use_custom_degradations", False),
         custom_opt=custom_degradation_config
     )
