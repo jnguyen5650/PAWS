@@ -52,13 +52,13 @@ def main():
     print("\n" + "=" * 72)
     print("Model Summary | Generator (G)")
     print("=" * 72)
-    summary(model, input_size=(1, 5, 3, 64, 64))
+    summary(model, input_size=(config["training"]["batch_size"], config["dataset"]["train"]["num_frames"], 3, config["dataset"]["train"]["patch_size"], config["dataset"]["train"]["patch_size"]))
     print()
     if config.get("gan", {}).get("enabled", False):
         print("\n" + "=" * 72)
         print("Model Summary | Discriminator (D)")
         print("=" * 72)
-        summary(discriminator, input_size=(1, 5, 3, 64, 64))
+        summary(discriminator, input_size=(config["training"]["batch_size"], config["dataset"]["train"]["num_frames"], 3, config["dataset"]["train"]["patch_size"], config["dataset"]["train"]["patch_size"]))
         print()
 
     # Training loop
