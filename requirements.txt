@@ -19,6 +19,7 @@ timm
 einops
 transformers>=4.37
 accelerate>=1.1
+setuptools<81
 rich
 
 streamlit
